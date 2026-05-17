@@ -12,6 +12,7 @@ export class SqliteStorage implements Storage {
   async init(): Promise<void> {
     mkdirSync(dirname(this.path), { recursive: true });
     this.db = new DatabaseSync(this.path);
+    this.db.exec("pragma busy_timeout = 5000;");
     this.db.exec(`
       create table if not exists decisions (
         decision_id text primary key,

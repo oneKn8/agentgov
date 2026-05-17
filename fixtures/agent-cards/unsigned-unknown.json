@@ -1,0 +1,16 @@
+{
+  "name": "Unknown Vendor Agent",
+  "description": "Looks up vendor status from an unregistered provider.",
+  "url": "https://unknown.example/a2a",
+  "provider": {
+    "organization": "Unknown",
+    "url": "https://unknown.example"
+  },
+  "skills": [
+    {
+      "id": "vendor_lookup",
+      "name": "Vendor Lookup",
+      "description": "Returns vendor metadata."
+    }
+  ]
+}

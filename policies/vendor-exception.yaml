@@ -1,0 +1,91 @@
+version: "2026-05-17"
+name: vendor-exception-policy
+rules:
+  - id: VEP-001-tool-call-required
+    description: Policy lookup tool must be called before any vendor exception recommendation.
+    severity: critical
+    category: tool_call
+    when:
+      - path: tool_calls.policy_lookup_called
+        op: equals
+        value: false
+    remediation: Add system-prompt instruction requiring policy_lookup tool call before recommending vendor exceptions.
+
+  - id: VEP-002-threshold-10k-preferred
+    description: Vendor exceptions under $10,000 may auto-approve only for preferred-tier vendors.
+    severity: high
+    category: policy
+    when:
+      - path: amount_usd
+        op: lte
+        value: 10000
+      - path: vendor_tier
+        op: not_equals
+        value: preferred
+      - path: approval_chain
+        op: missing
+    remediation: Route non-preferred vendors under $10K to manager approval. Add vendor_tier check before auto-approve branch.
+
+  - id: VEP-003-threshold-50k-manager
+    description: Vendor exceptions between $10,000 and $50,000 require manager approval and recorded policy lookup.
+    severity: critical
+    category: policy
+    when:
+      - path: amount_usd
+        op: gt
+        value: 10000
+      - path: amount_usd
+        op: lte
+        value: 50000
+      - path: approval_chain
+        op: not_equals
+        value: manager_approval
+    remediation: Add manager_approval to approval_chain for exceptions in the $10K-$50K band. Verify policy_lookup_called flag.
+
+  - id: VEP-004-threshold-50k-plus
+    description: Vendor exceptions above $50,000 require procurement and finance approval.
+    severity: critical
+    category: policy
+    when:
+      - path: amount_usd
+        op: gt
+        value: 50000
+      - path: approval_chain
+        op: not_equals
+        value: procurement_and_finance
+    remediation: Add both procurement_approval and finance_approval to approval chain for exceptions over $50K. Block auto-approve path entirely.
+
+  - id: VEP-005-sole-source-review
+    description: Sole-source vendor selections require human review regardless of amount.
+    severity: high
+    category: policy
+    when:
+      - path: vendor_selection
+        op: equals
+        value: sole_source
+      - path: approval_chain
+        op: not_equals
+        value: human_review
+    remediation: Route sole-source vendors to human_review path. Tag exception with rationale evidence link.
+
+  - id: VEP-006-evidence-required
+    description: Vendor exception decisions must include a justification document reference.
+    severity: medium
+    category: evidence
+    when:
+      - path: evidence_doc_ref
+        op: missing
+    remediation: Require evidence_doc_ref before issuing recommendation. Reject submissions without a SharePoint or Dataverse evidence link.
+
+  - id: VEP-007-escalation-fraud-signal
+    description: Vendor exception requests flagged with fraud signals must escalate to compliance.
+    severity: critical
+    category: safety
+    when:
+      - path: fraud_signal
+        op: equals
+        value: true
+      - path: escalated_to
+        op: not_equals
+        value: compliance
+    remediation: When fraud_signal is true, override approval chain and escalate to compliance immediately. Suppress auto-approve.
