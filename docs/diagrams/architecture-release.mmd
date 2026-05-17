@@ -1,0 +1,68 @@
+---
+title: AgentGov Release Gate lifecycle
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#0b1b3a"
+    primaryTextColor: "#f8fafc"
+    primaryBorderColor: "#1e3a8a"
+    lineColor: "#94a3b8"
+    secondaryColor: "#1e293b"
+    tertiaryColor: "#334155"
+    fontFamily: "Inter, system-ui, sans-serif"
+---
+flowchart TD
+  START([Maker wants to ship<br/>a Copilot Studio agent])
+
+  INPUTS["agent profile<br/>+ policy YAML"]
+  GEN["generate_release_tests<br/>build deterministic test set"]
+  EVAL_RUN["Copilot Studio<br/>Evaluation API"]
+  INGEST["ingest_eval_results<br/>normalize into EvalResult"]
+  ASSERT["assert_tool_calls<br/>expected vs actual"]
+  CLASSIFY{"classify_release_risk<br/>+ regression vs history?"}
+  REMEDIATE["recommend_remediation<br/>fixes + owners"]
+  COMPOSE["compose_release_packet<br/>Markdown + HTML evidence"]
+  PERSIST["persist_decision<br/>HMAC-sign, idempotent"]
+
+  SHIP(["ship<br/>release approved"])
+  WARN(["warn<br/>conditional ship<br/>+ packet attached"])
+  BLOCK(["block<br/>release refused"])
+
+  REVOKE["revoke_release<br/>(post-release regression detected)"]
+
+  START --> INPUTS
+  INPUTS --> GEN
+  GEN --> EVAL_RUN
+  EVAL_RUN --> INGEST
+  INGEST --> ASSERT
+  ASSERT --> CLASSIFY
+
+  CLASSIFY -- "pass / no regression" --> PERSIST
+  CLASSIFY -- "warn / soft regression" --> REMEDIATE
+  CLASSIFY -- "fail / hard regression" --> REMEDIATE
+  REMEDIATE --> COMPOSE
+  COMPOSE --> PERSIST
+
+  PERSIST -- "pass" --> SHIP
+  PERSIST -- "warn" --> WARN
+  PERSIST -- "fail" --> BLOCK
+
+  SHIP -. "SQLite + Dataverse audit" .-> AUDIT[("Decision table")]
+  WARN -. "SQLite + Dataverse audit" .-> AUDIT
+  BLOCK -. "SQLite + Dataverse audit" .-> AUDIT
+
+  AUDIT -. "later eval regression" .-> REVOKE
+  REVOKE -. "supersede prior decision" .-> AUDIT
+
+  classDef step fill:#1e293b,stroke:#94a3b8,color:#f8fafc;
+  classDef decide fill:#1e40af,stroke:#1d4ed8,color:#eff6ff;
+  classDef good fill:#14532d,stroke:#15803d,color:#f0fdf4;
+  classDef warn fill:#7c2d12,stroke:#9a3412,color:#fff7ed;
+  classDef bad fill:#7f1d1d,stroke:#991b1b,color:#fef2f2;
+  classDef store fill:#0c4a6e,stroke:#0369a1,color:#f0f9ff;
+  class INPUTS,GEN,EVAL_RUN,INGEST,ASSERT,REMEDIATE,COMPOSE,PERSIST,REVOKE step;
+  class CLASSIFY decide;
+  class SHIP good;
+  class WARN warn;
+  class BLOCK bad;
+  class AUDIT store;
