@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import YAML from "yaml";
 import type { ReleaseFailure, Severity } from "../schema/types.js";
+import { resolveWorkspaceFile } from "../lib/paths.js";
 
 export type RuleOp = "equals" | "not_equals" | "gt" | "gte" | "lt" | "lte" | "includes" | "missing";
 
@@ -26,7 +27,7 @@ export interface PolicyDocument {
 }
 
 export function loadPolicy(path: string): PolicyDocument {
-  const parsed = YAML.parse(readFileSync(path, "utf8")) as PolicyDocument;
+  const parsed = YAML.parse(readFileSync(resolveWorkspaceFile(path), "utf8")) as PolicyDocument;
   validatePolicy(parsed);
   return parsed;
 }

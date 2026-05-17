@@ -2,11 +2,10 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { Command } from "commander";
-import YAML from "yaml";
-import type { AgentProfile } from "./schema/types.js";
 import { verifySignature } from "./gate/signing.js";
 import { composeReleasePacket } from "./gate/packetGenerator.js";
 import { loadPolicy } from "./gate/ruleEngine.js";
+import { loadAgentProfile } from "./lib/loaders.js";
 import { SqliteStorage } from "./storage/SqliteStorage.js";
 import { inspectAgentCard } from "./tools/trust/inspectAgentCard.js";
 import { issueTrustVerdict } from "./tools/trust/issueTrustVerdict.js";
@@ -104,14 +103,6 @@ program.parseAsync().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });
-
-function loadAgentProfile(path: string): AgentProfile {
-  const profile = YAML.parse(readFileSync(path, "utf8")) as AgentProfile;
-  if (!profile.agent_id || !profile.name || !profile.owner || !Array.isArray(profile.tools)) {
-    throw new Error(`Invalid agent profile: ${path}`);
-  }
-  return profile;
-}
 
 function printJson(value: unknown): void {
   console.log(JSON.stringify(value, null, 2));

@@ -10,6 +10,7 @@ export class SqliteStorage implements Storage {
   constructor(private readonly path = process.env.AGENTGOV_DB ?? "outputs/agentgov.db") {}
 
   async init(): Promise<void> {
+    if (this.db) return;
     mkdirSync(dirname(this.path), { recursive: true });
     this.db = new DatabaseSync(this.path);
     this.db.exec("pragma busy_timeout = 5000;");
@@ -72,8 +73,12 @@ export class SqliteStorage implements Storage {
   }
 
   async revokeDecision(decisionId: string, reason: string, actor: string): Promise<StoredDecision> {
-    const now = new Date().toISOString();
     const db = this.database();
+    const existing = await this.getDecision(decisionId);
+    if (!existing) throw new Error(`Decision not found: ${decisionId}`);
+    if (existing.revoked_at) return existing;
+
+    const now = new Date().toISOString();
     db.prepare("update decisions set revoked_at = ?, revoked_by = ?, revoke_reason = ? where decision_id = ?").run(
       now,
       actor,
@@ -81,7 +86,7 @@ export class SqliteStorage implements Storage {
       decisionId
     );
     const record = await this.getDecision(decisionId);
-    if (!record) throw new Error(`Decision not found: ${decisionId}`);
+    if (!record) throw new Error(`Decision not found after revoke: ${decisionId}`);
     return record;
   }
 

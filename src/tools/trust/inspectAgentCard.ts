@@ -1,14 +1,16 @@
 import { readFileSync } from "node:fs";
 import type { AgentCard } from "../../schema/types.js";
+import { resolveWorkspaceFile } from "../../lib/paths.js";
 
 export async function inspectAgentCard(source: string, offline = false): Promise<AgentCard & { source: string }> {
-  if (offline || source.endsWith(".json")) {
-    const card = JSON.parse(readFileSync(source, "utf8")) as AgentCard;
+  if (offline || !isHttpUrl(source)) {
+    const card = JSON.parse(readFileSync(resolveWorkspaceFile(source), "utf8")) as AgentCard;
     return { ...card, source };
   }
 
-  const normalized = source.replace(/\/$/, "");
-  const candidates = [`${normalized}/.well-known/agent-card.json`, `${normalized}/.well-known/agent.json`];
+  const candidates = source.endsWith(".json")
+    ? [source]
+    : [`${source.replace(/\/$/, "")}/.well-known/agent-card.json`, `${source.replace(/\/$/, "")}/.well-known/agent.json`];
   let lastError: unknown;
   for (const url of candidates) {
     try {
@@ -21,4 +23,13 @@ export async function inspectAgentCard(source: string, offline = false): Promise
     }
   }
   throw new Error(`Could not fetch agent card from ${source}: ${String(lastError)}`);
+}
+
+function isHttpUrl(source: string): boolean {
+  try {
+    const url = new URL(source);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }

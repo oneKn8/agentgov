@@ -9,9 +9,11 @@
   "scripts": {
     "build": "tsc && node dist/schema/exportJsonSchemas.js",
     "dev": "tsx src/server.ts",
+    "mcp:start": "node dist/server.js",
     "cli": "tsx src/cli.ts",
     "test": "vitest run",
-    "test:smoke": "npm run build && node dist/cli.js trust check fixtures/agent-cards/poisoned-injection.json --offline && node dist/cli.js trust check fixtures/agent-cards/trusted-signed.json --offline && node dist/cli.js release check target-agents/vendor-exception.yaml --eval fixtures/eval-results/block.json && node dist/cli.js policy validate policies/vendor-exception.yaml",
+    "test:sqlite": "node scripts/sqlite-smoke.mjs",
+    "test:smoke": "npm run build && npm run test:sqlite && node dist/cli.js trust check fixtures/agent-cards/poisoned-injection.json --offline && node dist/cli.js trust check fixtures/agent-cards/trusted-signed.json --offline && node dist/cli.js release check target-agents/vendor-exception.yaml --eval fixtures/eval-results/block.json && node dist/cli.js policy validate policies/vendor-exception.yaml",
     "schema": "tsx src/schema/exportJsonSchemas.ts"
   },
   "dependencies": {
