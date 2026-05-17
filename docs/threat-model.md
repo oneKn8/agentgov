@@ -79,7 +79,7 @@ This document analyzes the adversarial surface of AgentGov and the controls in t
 |---|---|---|
 | Low-privilege maker bypasses release gate by directly registering an MCP that approves itself | Tenant tools registry abuse | Copilot Studio MCP tool registration requires Power Platform admin role; AgentGov's `persist_decision` validates `agent_id` matches the registered profile owner |
 | Attacker registers a malicious "trust registry" file as authoritative | Repo write access | Trust registry is loaded from a pinned path; production deployment fingerprints the file and refuses on mismatch |
-| Revocation API used by anyone to nullify any release | Open `POST /releases/{id}/revoke` | Revocation requires the `x-agentgov-revoke-token` HMAC bearer (`AGENTGOV_REVOKE_TOKEN`, constant-time compared) — or, when `AGENTGOV_ALLOW_LOOPBACK_REVOKE=true`, restricts callers to `127.0.0.1` / `::1`. The body's required `actor` field is persisted in the audit row. Entra OAuth can be layered on top via the Copilot Studio connector (see `docs/wiring.md` Step 6) for production tenant identity. |
+| Revocation API used by anyone to nullify any release | Open `POST /releases/{id}/revoke` | Revocation requires the `x-agentgov-revoke-token` header (`AGENTGOV_REVOKE_TOKEN`) — a static bearer token compared in constant time via `timingSafeEqual` (`src/api/revoke.ts:19`). Optional loopback fallback when `AGENTGOV_ALLOW_LOOPBACK_REVOKE=true` restricts callers to `127.0.0.1` / `::1`. The body's required `actor` field is persisted in the audit row. Entra OAuth can be layered on top via the Copilot Studio connector (see `docs/wiring.md` Step 6) for production tenant identity. |
 
 ---
 

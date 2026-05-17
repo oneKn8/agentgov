@@ -63,33 +63,49 @@ What `azd up` actually provisions (per `infra/workload.bicep`):
 What it does **not** provision (intentional, to keep `tier=free` actually free):
 
 - No Azure Container Registry — bring your own (`AGENTGOV_CONTAINER_IMAGE` must point at a reachable image; the predeploy hook fails fast if no image is set and no `Dockerfile` is present)
-- No managed database — AgentGov uses local SQLite by default (`AGENTGOV_DB`). Switch to Dataverse via **Step 7**.
+- No managed database — AgentGov writes decision records to local SQLite (`AGENTGOV_DB`). Dataverse / SharePoint adapters are planned (see **Step 7**) but not wired in the current engine.
 
 Output prints `AGENTGOV_FQDN` and `AGENTGOV_URL`; the MCP endpoint is `${AGENTGOV_URL}/mcp`.
 
 ## Step 2 — Authentication
 
-AgentGov ships two independent auth gates: one on `/mcp` and one on `/releases/.../revoke`. Both are HMAC bearer tokens compared in constant time (`timingSafeEqual`). Entra OAuth is **optional production hardening** layered on top — see **Step 6**.
+AgentGov ships **two independent gates** on the HTTP surface — a token gate and an origin (CORS) gate. They are evaluated separately on every request; setting up one does not configure the other.
 
-### MCP token (`POST /mcp`)
+- **Token gate**: static bearer tokens checked with `timingSafeEqual` for constant-time comparison (`src/server.ts:121`). This is plain string equality — **not** HMAC. (HMAC is only used to sign the `TrustVerdict` / `ReleaseDecision` payloads via `src/gate/signing.ts`.)
+- **Origin gate**: enforced by the CORS check at `src/api/http.ts:14-22`. Applies only when the request carries an `Origin` header (browser-driven requests do; `curl` and most MCP CLIs do not). Requests **without** an `Origin` header are not gated by CORS.
 
-| Behavior | `AGENTGOV_MCP_TOKEN` set? | `AGENTGOV_ALLOW_ANY_ORIGIN=true`? |
+Entra OAuth is optional production hardening layered on top of both gates — see **Step 6**.
+
+### MCP gate (`POST /mcp`)
+
+Token behavior (`src/server.ts:109-119`):
+
+| `AGENTGOV_MCP_TOKEN` set? | `AGENTGOV_ALLOW_ANY_ORIGIN=true`? | Token check result |
 |---|---|---|
-| Allow only requests with `x-agentgov-mcp-token: <token>` | ✔ | either |
-| Reject every request with `401 unauthorized` | ✘ | ✔ |
-| Allow same-origin / loopback only | ✘ | ✘ (default) |
+| ✔ | either | Required: header `x-agentgov-mcp-token` must match. Mismatch → `401 unauthorized — Missing or invalid MCP token`. |
+| ✘ | ✔ | Always rejected: `401 unauthorized — Set AGENTGOV_MCP_TOKEN before enabling AGENTGOV_ALLOW_ANY_ORIGIN`. |
+| ✘ | ✘ (default) | Skipped. Any caller that satisfies the origin gate gets in. |
 
-Recommended: always set `AGENTGOV_MCP_TOKEN`. Copilot Studio sends it via the connector's **Custom header** field — see Step 3.
+Origin behavior (independent of the token gate):
 
-### Revoke token (`POST /releases/{id}/revoke`)
+| Request type | Default behavior |
+|---|---|
+| Browser with `Origin: https://example.com` | Allowed only if origin is `localhost` / `127.0.0.1` / `::1`, listed in `AGENTGOV_ALLOWED_ORIGINS`, or `AGENTGOV_ALLOW_ANY_ORIGIN=true`. |
+| `curl`, MCP CLI clients, server-to-server (no `Origin` header) | **Allowed.** The CORS gate only fires when an `Origin` is present. |
 
-| Behavior | `AGENTGOV_REVOKE_TOKEN` set? | `AGENTGOV_ALLOW_LOOPBACK_REVOKE=true`? |
+Recommended: always set `AGENTGOV_MCP_TOKEN`. Without it, anything that can reach the port over the network (e.g. `curl http://host:3000/mcp`) can call MCP tools. Copilot Studio sends the token via the connector's **Custom header** field — see Step 3.
+
+### Revoke gate (`POST /releases/{id}/revoke`)
+
+Token behavior (`src/api/revoke.ts:16-26`):
+
+| `AGENTGOV_REVOKE_TOKEN` set? | `AGENTGOV_ALLOW_LOOPBACK_REVOKE=true`? | Result |
 |---|---|---|
-| Allow only requests with `x-agentgov-revoke-token: <token>` | ✔ | either |
-| Allow loopback (`127.0.0.1` / `::1`) only | ✘ | ✔ |
-| Reject every request with `401 unauthorized` | ✘ | ✘ (default) |
+| ✔ | either | Required: header `x-agentgov-revoke-token` must match. |
+| ✘ | ✔ | Loopback fallback: only requests from `127.0.0.1` / `::1` allowed. Non-loopback → `401 unauthorized`. |
+| ✘ | ✘ (default) | Always rejected. |
 
-Body must be JSON: `{ "reason": "<string>", "actor": "<string>" }`. Both fields are required and validated.
+Body must be JSON: `{ "reason": "<string>", "actor": "<string>" }`. Both fields are required, validated as non-empty strings, and persisted to the audit row.
 
 ## Step 3 — Configure Copilot Studio agent
 
@@ -176,9 +192,13 @@ For a production MCP deployment, layer Entra OAuth in front of the connector. **
 7. Copy the **Redirect URI** Copilot Studio displays back to the Entra app's **Authentication → Redirect URIs (Web)**.
 8. Re-test the connection — sign in with an account in the tenant, grant consent.
 
-## Step 7 — Dataverse decision storage (optional)
+## Step 7 — Dataverse / SharePoint decision storage (planned, not yet wired)
 
-By default AgentGov writes decision records to local SQLite. To switch to Dataverse:
+> **Status:** Not implemented in the current engine. `src/storage/sharedStorage.ts:5` unconditionally returns a `SqliteStorage` instance; `AGENTGOV_STORAGE` is not read anywhere. The `DataverseStorage` and `SharePointStorage` adapters in `src/storage/` exist as interface-conformant stubs whose `init()` throws `"<adapter> is documented but not implemented in the local-first MVP"`. This section documents the **target shape** for when those adapters are wired up.
+
+Today, every decision is persisted to SQLite at the path resolved by `AGENTGOV_DB` (default `outputs/agentgov.db`). For demos and the hackathon submission, SQLite is sufficient and audit-by-default holds: `--offline` and HTTP-mode paths both write through `getStorage()` -> `SqliteStorage`.
+
+When the Dataverse adapter is wired in, the target setup will be:
 
 1. In the Power Platform Admin Center, ensure your environment has a Dataverse database.
 2. Create three custom tables in your solution:
@@ -186,19 +206,16 @@ By default AgentGov writes decision records to local SQLite. To switch to Datave
    - `ag_trust_verdicts` with the same shape keyed on decision_id
    - `ag_audit_events` for revocation entries
 3. Generate a Dataverse Web API service principal connection.
-4. Set environment variables in your AgentGov deployment:
-   ```
-   AGENTGOV_STORAGE=dataverse
-   DATAVERSE_URL=https://<org>.crm.dynamics.com
-   DATAVERSE_CLIENT_ID=<sp-id>
-   DATAVERSE_CLIENT_SECRET=<sp-secret>
-   DATAVERSE_TENANT_ID=<tenant>
-   ```
-5. Restart the MCP server. Decisions now persist to Dataverse.
+4. AgentGov would gain an `AGENTGOV_STORAGE` switch and Dataverse credentials env vars (precise names are TBD until the adapter is implemented and lands a `getStorage()` factory branch).
+5. Restart the MCP server. Decisions then persist to Dataverse instead of SQLite.
 
-## Step 8 — Power Automate Adaptive Card approval
+Wiring the adapter is a tracked follow-up; implementation lives in `src/storage/DataverseStorage.ts`. SharePoint storage follows the same pattern via `src/storage/SharePointStorage.ts`.
 
-The release packet can be routed to an owner via Power Automate.
+## Step 8 — Power Automate Adaptive Card approval (planned)
+
+> **Prerequisite:** Requires the Dataverse adapter from Step 7. Until that is wired into `getStorage()`, this flow has no `ag_release_decisions` table to trigger on. For demos before Dataverse lands, route the packet manually (`docs/architecture-release.svg` shows the packet shape; `agentgov release check ... --eval ...` prints it).
+
+Once Dataverse storage is wired, the release packet can be routed to an owner via Power Automate:
 
 1. Power Automate → Create → Automated cloud flow.
 2. Trigger: **When a row is added to a Dataverse table** → table `ag_release_decisions` → filter rows: `verdict eq 'BLOCK' or verdict eq 'WARN'`.
@@ -217,7 +234,7 @@ The release packet can be routed to an owner via Power Automate.
 | `401 unauthorized — Missing or invalid MCP token` on `/mcp` | Server has `AGENTGOV_MCP_TOKEN` set but request sent the wrong (or no) `x-agentgov-mcp-token` header | Confirm the connector header value matches the server env var exactly (no leading/trailing whitespace); rotate the token if leaked |
 | `401 unauthorized — Set AGENTGOV_MCP_TOKEN before enabling AGENTGOV_ALLOW_ANY_ORIGIN` | Wildcard CORS opened up without a server-side token gate | Either unset `AGENTGOV_ALLOW_ANY_ORIGIN` or set `AGENTGOV_MCP_TOKEN` — never run wildcard-open without a token |
 | `401 unauthorized` on `/releases/{id}/revoke` | `AGENTGOV_REVOKE_TOKEN` unset and request is not from loopback | Set `AGENTGOV_REVOKE_TOKEN`, or set `AGENTGOV_ALLOW_LOOPBACK_REVOKE=true` and run revoke from `127.0.0.1` (e.g. via `curl` on the host) |
-| `/readyz` returns `ok: false` with `storage: error` | SQLite path not writable or directory missing | Check `AGENTGOV_DB` path; create the parent dir; on Container Apps mount a persistent volume or switch to Dataverse (Step 7) |
+| `/readyz` returns `ok: false` with `storage: error` | SQLite path not writable or directory missing | Check `AGENTGOV_DB` path; create the parent dir; on Container Apps mount a persistent volume to a writable mount (Dataverse adapter is documented in Step 7 but not yet wired in the engine) |
 | Dataverse writes fail | Service principal lacks table permissions | Grant the SP the **Basic User** + table-level Read/Create/Update on the three custom tables |
 | Adaptive Card never delivers | Flow trigger filter not matching, or recipient field empty | Check Flow run history; verify `owner` column has a valid UPN |
 
