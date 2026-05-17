@@ -1,0 +1,93 @@
+---
+title: AgentGov overall architecture
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#0b1b3a"
+    primaryTextColor: "#f8fafc"
+    primaryBorderColor: "#1e3a8a"
+    lineColor: "#94a3b8"
+    secondaryColor: "#1e293b"
+    tertiaryColor: "#334155"
+    fontFamily: "Inter, system-ui, sans-serif"
+---
+flowchart LR
+  subgraph CONSUMER["Copilot Studio agents (consumers)"]
+    direction TB
+    CS_TRUST["Pre-delegation<br/>(Trust Gate caller)"]
+    CS_RELEASE["Pre-release<br/>(Release Gate caller)"]
+  end
+
+  subgraph AGENTGOV["AgentGov<br/>MCP Streamable HTTP server + CLI"]
+    direction TB
+
+    subgraph TRUST["Trust Gate &mdash; 6 tools"]
+      direction TB
+      T1["inspect_agent_card"]
+      T2["verify_card_signature"]
+      T3["check_trust_registry"]
+      T4["scan_card_metadata"]
+      T5["sanitize_agent_card"]
+      T6["issue_trust_verdict"]
+    end
+
+    subgraph RELEASE["Release Gate &mdash; 8 tools"]
+      direction TB
+      R1["generate_release_tests"]
+      R2["ingest_eval_results"]
+      R3["assert_tool_calls"]
+      R4["classify_release_risk"]
+      R5["recommend_remediation"]
+      R6["compose_release_packet"]
+      R7["persist_decision"]
+      R8["revoke_release"]
+    end
+
+    POLICY[("Policy as code<br/>(YAML)")]
+    SIGNER["HMAC signer<br/>+ JCS canonical"]
+  end
+
+  subgraph EXTERNAL["External agent surface"]
+    A2A["A2A agent<br/>/.well-known/agent-card.json"]
+  end
+
+  subgraph EVALS["Eval surface"]
+    EVAL["Copilot Studio<br/>Evaluation API"]
+  end
+
+  subgraph STORE["Audit + decision storage (local-first)"]
+    direction TB
+    SQLITE[("SQLite<br/>decision table")]
+    DV[("Dataverse<br/>(adapter, optional)")]
+    SP[("SharePoint<br/>(adapter, optional)")]
+  end
+
+  subgraph OUT["Signed outputs"]
+    direction TB
+    TV["TrustVerdict<br/>(allow / sanitize / block)"]
+    RD["ReleaseDecision<br/>(ship / block + packet)"]
+  end
+
+  CS_TRUST -- "MCP tools/call" --> TRUST
+  CS_RELEASE -- "MCP tools/call" --> RELEASE
+
+  TRUST -- "fetch + verify" --> A2A
+  TRUST -. "constrain" .-> POLICY
+  RELEASE -- "ingest results" --> EVAL
+  RELEASE -. "constrain" .-> POLICY
+
+  TRUST --> SIGNER
+  RELEASE --> SIGNER
+  SIGNER --> TV
+  SIGNER --> RD
+
+  TV --> STORE
+  RD --> STORE
+  RD --> R8
+
+  classDef gateBox stroke-width:2px,stroke:#1e3a8a;
+  classDef storeBox fill:#0c4a6e,stroke:#0369a1,color:#f0f9ff;
+  classDef outBox fill:#14532d,stroke:#15803d,color:#f0fdf4;
+  class TRUST,RELEASE gateBox;
+  class STORE storeBox;
+  class OUT outBox;

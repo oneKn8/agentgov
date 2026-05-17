@@ -169,7 +169,7 @@ Full Copilot Studio + Power Automate + Dataverse + Entra OAuth setup with troubl
 
 ## Architecture
 
-![AgentGov architecture](docs/architecture.png)
+![AgentGov architecture](docs/architecture.svg)
 
 One MCP Streamable HTTP server, two tool families (6 trust + 8 release), one signed decision schema, one Dataverse / SharePoint / SQLite decision table, one CLI.
 
@@ -179,7 +179,7 @@ One MCP Streamable HTTP server, two tool families (6 trust + 8 release), one sig
 | **Release Gate** | `generate_release_tests` · `ingest_eval_results` · `assert_tool_calls` · `classify_release_risk` · `recommend_remediation` · `compose_release_packet` · `persist_decision` · `revoke_release` |
 | **CLI** | `agentgov trust check` · `agentgov release check` · `agentgov release revoke` · `agentgov policy validate` · `agentgov policy testset` · `agentgov signature verify` |
 
-Trust lifecycle: [`docs/architecture-trust.png`](docs/architecture-trust.png) · Release lifecycle: [`docs/architecture-release.png`](docs/architecture-release.png)
+Trust lifecycle: [`docs/architecture-trust.svg`](docs/architecture-trust.svg) · Release lifecycle: [`docs/architecture-release.svg`](docs/architecture-release.svg)
 
 ---
 

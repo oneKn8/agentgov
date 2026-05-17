@@ -1,0 +1,60 @@
+---
+title: AgentGov Trust Gate lifecycle
+config:
+  theme: base
+  themeVariables:
+    primaryColor: "#0b1b3a"
+    primaryTextColor: "#f8fafc"
+    primaryBorderColor: "#1e3a8a"
+    lineColor: "#94a3b8"
+    secondaryColor: "#1e293b"
+    tertiaryColor: "#334155"
+    fontFamily: "Inter, system-ui, sans-serif"
+---
+flowchart TD
+  START([Copilot Studio agent<br/>wants to delegate to external A2A agent])
+
+  INSPECT["inspect_agent_card<br/>fetch /.well-known/agent-card.json"]
+  VERIFY["verify_card_signature<br/>JWS against pinned trust registry"]
+  REGISTRY{"check_trust_registry<br/>tenant trust policy?"}
+  SCAN["scan_card_metadata<br/>prompt injection, exfil patterns,<br/>permission escalation"]
+  SANITIZE_DECIDE{"recoverable?"}
+  SANITIZE["sanitize_agent_card<br/>strip risky fields, fix loose perms"]
+  ISSUE["issue_trust_verdict<br/>HMAC-sign, persist"]
+
+  ALLOW(["allow<br/>delegation proceeds"])
+  SANITIZE_ALLOW(["allow_sanitized<br/>delegation proceeds<br/>with cleaned card"])
+  BLOCK(["block<br/>delegation refused"])
+
+  START --> INSPECT
+  INSPECT --> VERIFY
+  VERIFY -- "signed + registered" --> REGISTRY
+  VERIFY -- "unsigned / wrong key" --> SCAN
+  REGISTRY -- "trusted" --> SCAN
+  REGISTRY -- "unknown tenant" --> SCAN
+  SCAN -- "no findings" --> ISSUE
+  SCAN -- "findings" --> SANITIZE_DECIDE
+  SANITIZE_DECIDE -- "yes" --> SANITIZE
+  SANITIZE_DECIDE -- "no" --> ISSUE
+  SANITIZE --> ISSUE
+
+  ISSUE -- "clean + trusted" --> ALLOW
+  ISSUE -- "sanitized" --> SANITIZE_ALLOW
+  ISSUE -- "blocked findings" --> BLOCK
+
+  ALLOW -. "SQLite audit row" .-> AUDIT[("Decision table")]
+  SANITIZE_ALLOW -. "SQLite audit row" .-> AUDIT
+  BLOCK -. "SQLite audit row" .-> AUDIT
+
+  classDef gate fill:#1e293b,stroke:#94a3b8,color:#f8fafc;
+  classDef decide fill:#1e40af,stroke:#1d4ed8,color:#eff6ff;
+  classDef good fill:#14532d,stroke:#15803d,color:#f0fdf4;
+  classDef warn fill:#7c2d12,stroke:#9a3412,color:#fff7ed;
+  classDef bad fill:#7f1d1d,stroke:#991b1b,color:#fef2f2;
+  classDef store fill:#0c4a6e,stroke:#0369a1,color:#f0f9ff;
+  class INSPECT,VERIFY,SCAN,SANITIZE,ISSUE gate;
+  class REGISTRY,SANITIZE_DECIDE decide;
+  class ALLOW good;
+  class SANITIZE_ALLOW warn;
+  class BLOCK bad;
+  class AUDIT store;
