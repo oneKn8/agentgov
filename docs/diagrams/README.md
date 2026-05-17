@@ -1,6 +1,6 @@
 # Diagram sources
 
-The architecture SVGs in `../docs/architecture*.svg` are rendered from these Mermaid sources. Edit the `.mmd` files, regenerate the SVGs, commit both.
+The architecture SVGs in `../architecture*.svg` are rendered from these Mermaid sources. Edit the `.mmd` files, regenerate the SVGs, commit both.
 
 ## Regenerate
 
