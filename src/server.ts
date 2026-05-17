@@ -1,77 +1,78 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { handleRevoke, writeJson } from "./api/revoke.js";
+import { applyCors, HttpError, readJsonBody, writeError, writeJson } from "./api/http.js";
+import { handleRevoke } from "./api/revoke.js";
 import { healthPayload, readinessPayload } from "./api/health.js";
 import { registerAgentGovTools } from "./mcp/registerTools.js";
 
 const port = Number(process.env.PORT ?? 3000);
 
-const server = createServer(async (req, res) => {
-  try {
-    applyCors(res);
-    if (req.method === "OPTIONS") {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    if (url.pathname === "/healthz") {
-      writeJson(res, 200, healthPayload());
-      return;
-    }
-    if (url.pathname === "/readyz") {
-      writeJson(res, 200, readinessPayload());
-      return;
-    }
-    if (url.pathname === "/mcp") {
-      if (req.method !== "POST") {
-        writeJson(res, 405, {
-          jsonrpc: "2.0",
-          error: {
-            code: -32000,
-            message: "Method not allowed."
-          },
-          id: null
-        });
+export function createAgentGovServer() {
+  return createServer(async (req, res) => {
+    try {
+      const corsAllowed = applyCors(req, res);
+      if (req.method === "OPTIONS") {
+        res.writeHead(corsAllowed ? 204 : 403);
+        res.end();
         return;
       }
-      await handleMcpRequest(req, res);
-      return;
+      if (!corsAllowed) {
+        throw new HttpError(403, "cors_origin_denied", "Origin is not allowed");
+      }
+
+      const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+      if (url.pathname === "/healthz") {
+        writeJson(res, 200, healthPayload());
+        return;
+      }
+      if (url.pathname === "/readyz") {
+        writeJson(res, 200, readinessPayload());
+        return;
+      }
+      if (url.pathname === "/mcp") {
+        if (req.method !== "POST") {
+          writeJson(res, 405, {
+            jsonrpc: "2.0",
+            error: {
+              code: -32000,
+              message: "Method not allowed."
+            },
+            id: null
+          });
+          return;
+        }
+        await handleMcpRequest(req, res);
+        return;
+      }
+      const revokeMatch = url.pathname.match(/^\/releases\/([^/]+)\/revoke$/);
+      if (req.method === "POST" && revokeMatch) {
+        await handleRevoke(req, res, decodeURIComponent(revokeMatch[1]));
+        return;
+      }
+
+      writeJson(res, 404, {
+        ok: false,
+        error: "not_found",
+        routes: ["/healthz", "/readyz", "/mcp", "POST /releases/{release_id}/revoke"]
+      });
+    } catch (error) {
+      writeError(res, error);
     }
-    const revokeMatch = url.pathname.match(/^\/releases\/([^/]+)\/revoke$/);
-    if (req.method === "POST" && revokeMatch) {
-      await handleRevoke(req, res, decodeURIComponent(revokeMatch[1]));
-      return;
-    }
-
-    writeJson(res, 404, {
-      ok: false,
-      error: "not_found",
-      routes: ["/healthz", "/readyz", "/mcp", "POST /releases/{release_id}/revoke"]
-    });
-  } catch (error) {
-    writeJson(res, 500, {
-      ok: false,
-      error: error instanceof Error ? error.message : String(error)
-    });
-  }
-});
-
-server.listen(port, () => {
-  console.log(`AgentGov MCP server listening on http://localhost:${port}`);
-  console.log(`MCP endpoint: http://localhost:${port}/mcp`);
-});
-
-function applyCors(res: ServerResponse): void {
-  res.setHeader("access-control-allow-origin", "*");
-  res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
-  res.setHeader("access-control-allow-headers", "content-type, mcp-session-id");
+  });
 }
 
-process.on("SIGINT", () => shutdown());
-process.on("SIGTERM", () => shutdown());
+export function startAgentGovServer(listenPort = port) {
+  const server = createAgentGovServer();
+  server.listen(listenPort, () => {
+    console.log(`AgentGov MCP server listening on http://localhost:${listenPort}`);
+    console.log(`MCP endpoint: http://localhost:${listenPort}/mcp`);
+  });
+  process.on("SIGINT", () => shutdown(server));
+  process.on("SIGTERM", () => shutdown(server));
+  return server;
+}
 
 async function handleMcpRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const mcp = new McpServer({
@@ -89,20 +90,25 @@ async function handleMcpRequest(req: IncomingMessage, res: ServerResponse): Prom
     void transport.close();
     void mcp.close();
   });
-  await transport.handleRequest(req, res, await readJsonBody(req));
-}
-
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  try {
+    await transport.handleRequest(req, res, await readJsonBody(req));
+  } catch (error) {
+    await transport.close();
+    await mcp.close();
+    throw error;
   }
-  const raw = Buffer.concat(chunks).toString("utf8");
-  return raw.length > 0 ? JSON.parse(raw) : undefined;
 }
 
-function shutdown(): void {
+function shutdown(server: ReturnType<typeof createAgentGovServer>): void {
   server.close(() => {
     process.exit(0);
   });
+}
+
+function isMainModule(): boolean {
+  return process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
+}
+
+if (isMainModule()) {
+  startAgentGovServer();
 }

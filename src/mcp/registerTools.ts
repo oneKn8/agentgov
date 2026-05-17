@@ -29,6 +29,12 @@ const releaseSchema = {
 };
 
 export function registerAgentGovTools(server: McpServer): void {
+  let storagePromise: Promise<SqliteStorage> | undefined;
+  const getStorage = () => {
+    storagePromise ??= initializedStorage();
+    return storagePromise;
+  };
+
   server.registerTool(
     "inspect_agent_card",
     {
@@ -96,7 +102,7 @@ export function registerAgentGovTools(server: McpServer): void {
     async ({ source, offline, registry }) => {
       const card = await inspectAgentCard(source, offline);
       const verdict = issueTrustVerdict(card, loadTrustRegistry(registry));
-      await withStorage((storage) => storage.saveTrustVerdict(verdict, verdict.decision_id));
+      await getStorage().then((storage) => storage.saveTrustVerdict(verdict, verdict.decision_id));
       return jsonResult(verdict);
     }
   );
@@ -141,7 +147,7 @@ export function registerAgentGovTools(server: McpServer): void {
     async ({ profile_path, eval_path }) => {
       const decision = await classifyReleaseRisk(loadAgentProfile(profile_path), ingestEvalResults(eval_path), {
         profilePath: profile_path,
-        storage: await initializedStorage()
+        storage: await getStorage()
       });
       return jsonResult(decision);
     }
@@ -157,7 +163,7 @@ export function registerAgentGovTools(server: McpServer): void {
     async ({ profile_path, eval_path }) => {
       const decision = await classifyReleaseRisk(loadAgentProfile(profile_path), ingestEvalResults(eval_path), {
         profilePath: profile_path,
-        storage: await initializedStorage()
+        storage: await getStorage()
       });
       return jsonResult(recommendRemediation(decision.failures));
     }
@@ -173,7 +179,7 @@ export function registerAgentGovTools(server: McpServer): void {
     async ({ profile_path, eval_path }) => {
       const decision = await classifyReleaseRisk(loadAgentProfile(profile_path), ingestEvalResults(eval_path), {
         profilePath: profile_path,
-        storage: await initializedStorage()
+        storage: await getStorage()
       });
       return jsonResult(composeReleasePacket(decision));
     }
@@ -187,7 +193,7 @@ export function registerAgentGovTools(server: McpServer): void {
       inputSchema: releaseSchema
     },
     async ({ profile_path, eval_path }) => {
-      const storage = await initializedStorage();
+      const storage = await getStorage();
       const decision = await classifyReleaseRisk(loadAgentProfile(profile_path), ingestEvalResults(eval_path), {
         profilePath: profile_path,
         storage
@@ -208,7 +214,7 @@ export function registerAgentGovTools(server: McpServer): void {
         actor: z.string().optional().default("mcp-user")
       }
     },
-    async ({ release_id, reason, actor }) => jsonResult(await revokeRelease(await initializedStorage(), release_id, reason, actor))
+    async ({ release_id, reason, actor }) => jsonResult(await revokeRelease(await getStorage(), release_id, reason, actor))
   );
 }
 
@@ -216,10 +222,6 @@ async function initializedStorage(): Promise<SqliteStorage> {
   const storage = new SqliteStorage();
   await storage.init();
   return storage;
-}
-
-async function withStorage<T>(fn: (storage: SqliteStorage) => Promise<T>): Promise<T> {
-  return fn(await initializedStorage());
 }
 
 function jsonResult(value: unknown) {

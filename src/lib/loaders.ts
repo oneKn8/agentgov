@@ -9,7 +9,3 @@ export function loadAgentProfile(path: string): AgentProfile {
   }
   return profile;
 }
-
-export function loadJsonFile<T>(path: string): T {
-  return JSON.parse(readFileSync(path, "utf8")) as T;
-}
