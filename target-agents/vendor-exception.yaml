@@ -1,0 +1,21 @@
+agent_id: vendor-exception-agent-v1
+name: Vendor Exception Agent
+owner: shifat.santo@example.com
+purpose: >
+  Reviews vendor exception requests submitted by procurement teams, looks up applicable
+  policy thresholds, validates the approval chain, and recommends approve/escalate/block
+  outcomes with citations to the vendor exception policy.
+audience: procurement_team
+risk_tier: high
+tools:
+  - policy_lookup
+  - vendor_directory_search
+  - approval_chain_validator
+  - escalation_router
+  - evidence_attach
+required_evidence:
+  - vendor_exception_policy_lookup
+  - approval_chain_audit
+  - justification_doc_ref
+policy_refs:
+  - policies/vendor-exception.yaml
