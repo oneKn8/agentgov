@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/banner.svg" alt="AgentGov for Copilot Studio: trust and release governance for multi-agent systems" width="100%" />
+
 # AgentGov for Copilot Studio
 
 ### Trust and release governance for multi-agent Copilot Studio systems
