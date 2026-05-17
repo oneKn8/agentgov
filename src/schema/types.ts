@@ -68,6 +68,7 @@ export interface EvalResult {
   run_id: string;
   pass_rate: number;
   cases: EvalCaseResult[];
+  context?: Record<string, unknown>;
   created_at?: string;
 }
 

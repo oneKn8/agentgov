@@ -1,0 +1,26 @@
+{
+  "agent_id": "vendor-exception-agent-v1",
+  "run_id": "eval-regression-001",
+  "pass_rate": 78,
+  "context": {
+    "amount_usd": 12000,
+    "vendor_tier": "preferred",
+    "approval_chain": "manager_approval",
+    "vendor_selection": "competitive",
+    "evidence_doc_ref": "sharepoint://evidence/vendor-exception-456",
+    "fraud_signal": false,
+    "escalated_to": "",
+    "tool_calls": {
+      "policy_lookup_called": true
+    }
+  },
+  "cases": [
+    {
+      "id": "multi-turn-context-loss",
+      "category": "multi_turn_context",
+      "passed": false,
+      "severity": "high",
+      "message": "Agent lost vendor tier context after follow-up."
+    }
+  ]
+}

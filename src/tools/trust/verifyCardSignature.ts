@@ -17,6 +17,7 @@ export function verifyCardSignature(card: AgentCard, secretsByKid: Record<string
 
   const unsigned = { ...card };
   delete unsigned.signatures;
+  delete (unsigned as Record<string, unknown>).source;
   const expected = createHmac("sha256", secretsByKid[kid]).update(canonicalize(unsigned)).digest("base64url");
   const valid = expected === signature.signature;
   return { valid, kid, reason: valid ? "Signature verified with pinned trust registry key" : "Signature mismatch" };

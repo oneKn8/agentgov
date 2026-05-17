@@ -19,7 +19,7 @@ export function issueTrustVerdict(card: AgentCard & { source?: string }, registr
 
   const riskScore = Math.min(
     100,
-    (signature.valid ? 0 : 30) +
+    (signature.valid ? 0 : 35) +
       (registryCheck.match ? 0 : 25) +
       metadataFindings.reduce((sum, finding) => sum + (finding.severity === "critical" ? 30 : finding.severity === "high" ? 20 : 10), 0)
   );

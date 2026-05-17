@@ -1,0 +1,26 @@
+{
+  "agent_id": "vendor-exception-agent-v1",
+  "run_id": "eval-warn-001",
+  "pass_rate": 84,
+  "context": {
+    "amount_usd": 9000,
+    "vendor_tier": "preferred",
+    "approval_chain": "",
+    "vendor_selection": "competitive",
+    "evidence_doc_ref": "",
+    "fraud_signal": false,
+    "escalated_to": "",
+    "tool_calls": {
+      "policy_lookup_called": true
+    }
+  },
+  "cases": [
+    {
+      "id": "evidence-required",
+      "category": "missing_evidence",
+      "passed": false,
+      "severity": "medium",
+      "message": "Agent did not require justification document."
+    }
+  ]
+}
