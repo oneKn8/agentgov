@@ -14,29 +14,84 @@ Step-by-step setup for connecting AgentGov to Microsoft Copilot Studio, Power Au
 ### Local (devtunnel) — fastest for demo
 
 ```bash
-# In one terminal: start the MCP server
+# In one terminal: build and start the MCP server
 cd agentgov
+npm run build          # tsc + schema export -> dist/
+AGENTGOV_HMAC_SECRET="$(openssl rand -hex 32)" \
+AGENTGOV_MCP_TOKEN="$(openssl rand -hex 32)" \
+AGENTGOV_REVOKE_TOKEN="$(openssl rand -hex 32)" \
 npm run mcp:start
-# Listening at http://localhost:3000/mcp
+# Listening at http://localhost:3000
 
 # In another terminal: expose via devtunnel
 devtunnel host -p 3000 --allow-anonymous
 # Note the public URL: https://abc-3000.devtunnels.ms
 ```
 
-Your MCP endpoint becomes: `https://abc-3000.devtunnels.ms/mcp`.
+The four HTTP surfaces become:
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `https://abc-3000.devtunnels.ms/mcp` | POST | MCP Streamable HTTP — all 14 tools |
+| `https://abc-3000.devtunnels.ms/healthz` | GET | Liveness — `{ ok, service, version, time }` |
+| `https://abc-3000.devtunnels.ms/readyz` | GET | Readiness — checks storage + trust registry + tool registration |
+| `https://abc-3000.devtunnels.ms/releases/{release_id}/revoke` | POST | Supersede a prior release decision |
+
+See **Step 2 — Authentication** below for the headers Copilot Studio must send on every `/mcp` and `/releases/.../revoke` call.
 
 ### Production — Azure Container Apps via `azd`
 
+The repo ships an `azd`-compatible `azure.yaml` plus a Bicep template at `infra/main.bicep` + `infra/workload.bicep`.
+
 ```bash
 azd auth login
-azd init    # accept defaults; name agentgov
-azd up      # pick subscription + region (eastus or westus2)
+azd init                          # accept defaults; name agentgov
+azd env set AGENTGOV_TIER paid    # 'free' = scale-to-zero, no observability; 'paid' = min=1 + Log Analytics + App Insights
+azd env set AGENTGOV_CONTAINER_IMAGE myacr.azurecr.io/agentgov:0.1.0  # set when a real image is published
+azd env set AGENTGOV_MCP_TOKEN "$(openssl rand -hex 32)"
+azd env set AGENTGOV_REVOKE_TOKEN "$(openssl rand -hex 32)"
+azd up                            # pick subscription + region (eastus or westus2)
 ```
 
-`azd` provisions Azure Container Registry, Container Apps Environment, the Container App with external ingress on port 3000, and a Cosmos DB account (free tier). Output prints the public URL.
+What `azd up` actually provisions (per `infra/workload.bicep`):
 
-## Step 2 — Configure Copilot Studio agent
+- Container Apps Environment (Consumption workload profile)
+- Container App on port 8080 with `/healthz` liveness + `/readyz` readiness probes
+- Container Apps secrets carrying `AGENTGOV_MCP_TOKEN` and `AGENTGOV_REVOKE_TOKEN`
+- When `tier=paid`: Log Analytics workspace + Application Insights component, with `APPLICATIONINSIGHTS_CONNECTION_STRING` wired into the container
+
+What it does **not** provision (intentional, to keep `tier=free` actually free):
+
+- No Azure Container Registry — bring your own (`AGENTGOV_CONTAINER_IMAGE` must point at a reachable image; the predeploy hook fails fast if no image is set and no `Dockerfile` is present)
+- No managed database — AgentGov uses local SQLite by default (`AGENTGOV_DB`). Switch to Dataverse via **Step 7**.
+
+Output prints `AGENTGOV_FQDN` and `AGENTGOV_URL`; the MCP endpoint is `${AGENTGOV_URL}/mcp`.
+
+## Step 2 — Authentication
+
+AgentGov ships two independent auth gates: one on `/mcp` and one on `/releases/.../revoke`. Both are HMAC bearer tokens compared in constant time (`timingSafeEqual`). Entra OAuth is **optional production hardening** layered on top — see **Step 6**.
+
+### MCP token (`POST /mcp`)
+
+| Behavior | `AGENTGOV_MCP_TOKEN` set? | `AGENTGOV_ALLOW_ANY_ORIGIN=true`? |
+|---|---|---|
+| Allow only requests with `x-agentgov-mcp-token: <token>` | ✔ | either |
+| Reject every request with `401 unauthorized` | ✘ | ✔ |
+| Allow same-origin / loopback only | ✘ | ✘ (default) |
+
+Recommended: always set `AGENTGOV_MCP_TOKEN`. Copilot Studio sends it via the connector's **Custom header** field — see Step 3.
+
+### Revoke token (`POST /releases/{id}/revoke`)
+
+| Behavior | `AGENTGOV_REVOKE_TOKEN` set? | `AGENTGOV_ALLOW_LOOPBACK_REVOKE=true`? |
+|---|---|---|
+| Allow only requests with `x-agentgov-revoke-token: <token>` | ✔ | either |
+| Allow loopback (`127.0.0.1` / `::1`) only | ✘ | ✔ |
+| Reject every request with `401 unauthorized` | ✘ | ✘ (default) |
+
+Body must be JSON: `{ "reason": "<string>", "actor": "<string>" }`. Both fields are required and validated.
+
+## Step 3 — Configure Copilot Studio agent
 
 1. Navigate to https://copilotstudio.microsoft.com and create a new agent (or open an existing one).
 2. **Settings → Generative AI → Orchestration** → set to **Generative**. This is required for MCP tools to be invokable by the orchestrator.
@@ -44,15 +99,15 @@ azd up      # pick subscription + region (eastus or westus2)
 4. Fill the wizard:
    - **Server name:** `AgentGov`
    - **Description:** `Trust and release governance for multi-agent Copilot Studio systems. Use trust tools before delegating to external A2A agents. Use release tools before approving a release.`
-   - **Server URL:** `https://abc-3000.devtunnels.ms/mcp` (or your `azd` URL)
+   - **Server URL:** `https://abc-3000.devtunnels.ms/mcp` (or your `${AGENTGOV_URL}/mcp`)
    - **Authentication:**
-     - For demo: **None**
-     - For production: **OAuth 2.0 — Manual** with Entra (see Step 5)
+     - **Demo / local:** **No authentication** + (in the wizard's advanced section) add a **Custom header** `x-agentgov-mcp-token` with the value from `$AGENTGOV_MCP_TOKEN`. This is the simplest path that still rejects unauthenticated traffic.
+     - **Production:** **OAuth 2.0 — Manual** with Entra in front of the connector, plus the `x-agentgov-mcp-token` header for defense-in-depth. See **Step 6**.
 5. Click **Create**. Copilot Studio auto-generates a Power Platform custom connector wrapping `/mcp`.
 6. Click **Create a new connection** → sign in → **Add to agent**.
 7. Verify tools are visible in the agent's Tools tab: `inspect_agent_card`, `verify_card_signature`, `check_trust_registry`, `scan_card_metadata`, `sanitize_agent_card`, `issue_trust_verdict`, `generate_release_tests`, `ingest_eval_results`, `assert_tool_calls`, `classify_release_risk`, `recommend_remediation`, `compose_release_packet`, `persist_decision`, `revoke_release`.
 
-## Step 3 — System prompt
+## Step 4 — System prompt
 
 Paste this into the agent's instructions:
 
@@ -79,7 +134,7 @@ field so the maker has the audit reference. Be conservative — when in doubt,
 route to REVIEW or WARN rather than ALLOW or PASS.
 ```
 
-## Step 4 — Test the wiring
+## Step 5 — Test the wiring
 
 In Copilot Studio's test pane, try:
 
@@ -100,9 +155,9 @@ fixtures/eval-results/block.json. Run the release gate and give me the packet.
 
 The orchestrator should produce a BLOCK packet with the policy threshold breach + missing tool call findings.
 
-## Step 5 — Entra OAuth (production only)
+## Step 6 — Entra OAuth (production hardening)
 
-For a production MCP deployment, the AgentGov endpoint should require Entra OAuth.
+For a production MCP deployment, layer Entra OAuth in front of the connector. **Keep `AGENTGOV_MCP_TOKEN` set in addition** so the engine still rejects any request that bypasses the connector (defense in depth).
 
 1. **portal.azure.com → Microsoft Entra ID → App registrations → New registration**
 2. Name: `agentgov-mcp-api`. Single tenant. Redirect URI: leave blank for now.
@@ -121,7 +176,7 @@ For a production MCP deployment, the AgentGov endpoint should require Entra OAut
 7. Copy the **Redirect URI** Copilot Studio displays back to the Entra app's **Authentication → Redirect URIs (Web)**.
 8. Re-test the connection — sign in with an account in the tenant, grant consent.
 
-## Step 6 — Dataverse decision storage (optional)
+## Step 7 — Dataverse decision storage (optional)
 
 By default AgentGov writes decision records to local SQLite. To switch to Dataverse:
 
@@ -141,7 +196,7 @@ By default AgentGov writes decision records to local SQLite. To switch to Datave
    ```
 5. Restart the MCP server. Decisions now persist to Dataverse.
 
-## Step 7 — Power Automate Adaptive Card approval
+## Step 8 — Power Automate Adaptive Card approval
 
 The release packet can be routed to an owner via Power Automate.
 
@@ -151,13 +206,36 @@ The release packet can be routed to an owner via Power Automate.
 4. Add action: **Update a row** → set a `decision_status` column to the approver's response.
 5. Save and test by inserting a row manually.
 
-## Step 8 — Troubleshooting
+## Step 9 — Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Copilot Studio "Cannot reach server" | Devtunnel expired or local server stopped | Restart `devtunnel host` and `npm run mcp:start` |
 | Tools show up but always return errors | OAuth flow failed | Re-check redirect URI in Entra matches the one Copilot Studio displayed; re-issue client secret if older than 90 days |
 | `generative orchestration` toggle missing | Old Copilot Studio license or generative features disabled at tenant level | Confirm Power Platform admin has enabled generative AI features in admin center |
-| `trust check` works locally but fails from Copilot Studio | Devtunnel `--allow-anonymous` not set, or auth required but no OAuth configured | Add `--allow-anonymous` flag, or complete Step 5 |
+| `trust check` works locally but fails from Copilot Studio | Devtunnel `--allow-anonymous` not set, or `AGENTGOV_MCP_TOKEN` set on the server but the connector's `x-agentgov-mcp-token` header not configured | Add `--allow-anonymous` flag; add the matching custom header to the MCP connector (Step 3.4); or complete Step 6 |
+| `401 unauthorized — Missing or invalid MCP token` on `/mcp` | Server has `AGENTGOV_MCP_TOKEN` set but request sent the wrong (or no) `x-agentgov-mcp-token` header | Confirm the connector header value matches the server env var exactly (no leading/trailing whitespace); rotate the token if leaked |
+| `401 unauthorized — Set AGENTGOV_MCP_TOKEN before enabling AGENTGOV_ALLOW_ANY_ORIGIN` | Wildcard CORS opened up without a server-side token gate | Either unset `AGENTGOV_ALLOW_ANY_ORIGIN` or set `AGENTGOV_MCP_TOKEN` — never run wildcard-open without a token |
+| `401 unauthorized` on `/releases/{id}/revoke` | `AGENTGOV_REVOKE_TOKEN` unset and request is not from loopback | Set `AGENTGOV_REVOKE_TOKEN`, or set `AGENTGOV_ALLOW_LOOPBACK_REVOKE=true` and run revoke from `127.0.0.1` (e.g. via `curl` on the host) |
+| `/readyz` returns `ok: false` with `storage: error` | SQLite path not writable or directory missing | Check `AGENTGOV_DB` path; create the parent dir; on Container Apps mount a persistent volume or switch to Dataverse (Step 7) |
 | Dataverse writes fail | Service principal lacks table permissions | Grant the SP the **Basic User** + table-level Read/Create/Update on the three custom tables |
 | Adaptive Card never delivers | Flow trigger filter not matching, or recipient field empty | Check Flow run history; verify `owner` column has a valid UPN |
+
+## Appendix A — Environment variable reference
+
+Every env var the engine reads, with default and whether it is safe to omit.
+
+| Variable | Default | Safe to omit? | Purpose |
+|---|---|---|---|
+| `PORT` | `3000` | yes | HTTP port for the MCP + health + revoke server. Set to `8080` for Container Apps. |
+| `AGENTGOV_MCP_TOKEN` | _(none)_ | **no for production** | Bearer token clients must send as `x-agentgov-mcp-token`. Required when `AGENTGOV_ALLOW_ANY_ORIGIN=true`. |
+| `AGENTGOV_REVOKE_TOKEN` | _(none)_ | **no for production** | Bearer token clients must send as `x-agentgov-revoke-token` on `POST /releases/{id}/revoke`. |
+| `AGENTGOV_ALLOW_ANY_ORIGIN` | `false` | yes | Set to `true` to disable origin pinning. **Only safe when `AGENTGOV_MCP_TOKEN` is also set**; the engine refuses to start otherwise. |
+| `AGENTGOV_ALLOWED_ORIGINS` | _(none)_ | yes | CSV of additional allowed origins beyond loopback. Ignored when wildcard origin is enabled. |
+| `AGENTGOV_ALLOW_LOOPBACK_REVOKE` | `false` | yes | Set to `true` to allow `POST /releases/{id}/revoke` from `127.0.0.1` / `::1` without a revoke token. Useful for cron-driven revocation on the host. |
+| `AGENTGOV_WORKSPACE_ROOT` | `process.cwd()` | yes | Workspace root used by path-resolution guard. Set when AgentGov runs from a different directory than the policy/target-agent files. |
+| `AGENTGOV_DB` | `outputs/agentgov.db` | yes | SQLite file path for the decision table. Parent directory must be writable. |
+| `AGENTGOV_HMAC_SECRET` | _(insecure default)_ | **no for production** | HMAC signing secret for `TrustVerdict` and `ReleaseDecision`. Rotate by re-issuing decisions. |
+| `AGENTGOV_OTEL_FILE` | `outputs/otel-spans.jsonl` | yes | JSONL file the gate emits spans into. (Currently the Trust Gate emits; the Release Gate path is pending.) |
+
+Set them inline (`VAR=value npm run mcp:start`), via a `.env`-style loader of your choice, or via `azd env set VAR value` for Container Apps.
