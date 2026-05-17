@@ -153,6 +153,16 @@ describe("AgentGov HTTP and MCP server", () => {
     expect(payload.result.tools.map((tool) => tool.name)).toEqual(expectedTools);
   });
 
+  it("rejects disallowed CORS origins and unsupported MCP methods", async () => {
+    const cors = await fetch(`${baseUrl}/healthz`, {
+      headers: { origin: "https://attacker.example" }
+    });
+    expect(cors.status).toBe(403);
+
+    const mcpGet = await fetch(`${baseUrl}/mcp`);
+    expect(mcpGet.status).toBe(405);
+  });
+
   it("verifies trusted and untrusted Agent Card signatures over MCP", async () => {
     const trusted = await callTool<{ valid: boolean }>("verify_card_signature", {
       source: "fixtures/agent-cards/trusted-signed.json",
@@ -197,6 +207,16 @@ describe("AgentGov HTTP and MCP server", () => {
     });
     expect(malformed.status).toBe(400);
     await expect(malformed.json()).resolves.toMatchObject({ error: "invalid_json" });
+
+    const wrongType = await fetch(`${baseUrl}/releases/${releaseId}/revoke`, {
+      method: "POST",
+      headers: {
+        "content-type": "text/plain",
+        "x-agentgov-revoke-token": "test-token"
+      },
+      body: "not json"
+    });
+    expect(wrongType.status).toBe(415);
 
     const tooLarge = await fetch(`${baseUrl}/releases/${releaseId}/revoke`, {
       method: "POST",
