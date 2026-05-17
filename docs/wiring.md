@@ -16,7 +16,7 @@ Step-by-step setup for connecting AgentGov to Microsoft Copilot Studio, Power Au
 ```bash
 # In one terminal: start the MCP server
 cd agentgov
-AGENTGOV_REVOKE_TOKEN=demo-revoke-token npm run mcp:start
+npm run mcp:start
 # Listening at http://localhost:3000/mcp
 
 # In another terminal: expose via devtunnel
@@ -25,8 +25,6 @@ devtunnel host -p 3000 --allow-anonymous
 ```
 
 Your MCP endpoint becomes: `https://abc-3000.devtunnels.ms/mcp`.
-
-If you expose the revocation API through the tunnel, send `x-agentgov-revoke-token: demo-revoke-token` on `POST /releases/{release_id}/revoke`. Without `AGENTGOV_REVOKE_TOKEN`, revocation is accepted only from loopback clients.
 
 ### Production — Azure Container Apps via `azd`
 
@@ -161,6 +159,5 @@ The release packet can be routed to an owner via Power Automate.
 | Tools show up but always return errors | OAuth flow failed | Re-check redirect URI in Entra matches the one Copilot Studio displayed; re-issue client secret if older than 90 days |
 | `generative orchestration` toggle missing | Old Copilot Studio license or generative features disabled at tenant level | Confirm Power Platform admin has enabled generative AI features in admin center |
 | `trust check` works locally but fails from Copilot Studio | Devtunnel `--allow-anonymous` not set, or auth required but no OAuth configured | Add `--allow-anonymous` flag, or complete Step 5 |
-| Revocation returns `401` | Missing or incorrect `x-agentgov-revoke-token` header | Set `AGENTGOV_REVOKE_TOKEN` on the server and pass the same value in the request header |
 | Dataverse writes fail | Service principal lacks table permissions | Grant the SP the **Basic User** + table-level Read/Create/Update on the three custom tables |
 | Adaptive Card never delivers | Flow trigger filter not matching, or recipient field empty | Check Flow run history; verify `owner` column has a valid UPN |

@@ -126,7 +126,8 @@ describe("AgentGov HTTP and MCP server", () => {
     await expectJson("/readyz", {
       ok: true,
       checks: {
-        storage: "local-first-sqlite",
+        storage: "ok",
+        trust_registry: "ok",
         trust_gate: "registered",
         release_gate: "registered"
       }
@@ -150,6 +151,20 @@ describe("AgentGov HTTP and MCP server", () => {
     expect(response.status).toBe(200);
     const payload = parseSseJson(await response.text()) as { result: { tools: Array<{ name: string }> } };
     expect(payload.result.tools.map((tool) => tool.name)).toEqual(expectedTools);
+  });
+
+  it("verifies trusted and untrusted Agent Card signatures over MCP", async () => {
+    const trusted = await callTool<{ valid: boolean }>("verify_card_signature", {
+      source: "fixtures/agent-cards/trusted-signed.json",
+      offline: true
+    });
+    expect(trusted.valid).toBe(true);
+
+    const poisoned = await callTool<{ valid: boolean; reason: string }>("verify_card_signature", {
+      source: "fixtures/agent-cards/poisoned-injection.json",
+      offline: true
+    });
+    expect(poisoned.valid).toBe(false);
   });
 
   it("revokes a release through the HTTP API idempotently", async () => {
@@ -182,6 +197,16 @@ describe("AgentGov HTTP and MCP server", () => {
     });
     expect(malformed.status).toBe(400);
     await expect(malformed.json()).resolves.toMatchObject({ error: "invalid_json" });
+
+    const tooLarge = await fetch(`${baseUrl}/releases/${releaseId}/revoke`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-agentgov-revoke-token": "test-token"
+      },
+      body: JSON.stringify({ payload: "x".repeat(1024 * 1024) })
+    });
+    expect(tooLarge.status).toBe(413);
   });
 
   async function revoke(body: { reason: string; actor: string }) {
@@ -201,6 +226,25 @@ describe("AgentGov HTTP and MCP server", () => {
     const response = await fetch(`${baseUrl}${path}`);
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject(expected);
+  }
+
+  async function callTool<T>(name: string, args: Record<string, unknown>): Promise<T> {
+    const response = await fetch(`${baseUrl}/mcp`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream"
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: Date.now(),
+        method: "tools/call",
+        params: { name, arguments: args }
+      })
+    });
+    expect(response.status).toBe(200);
+    const payload = parseSseJson(await response.text()) as { result: { content: Array<{ text: string }> } };
+    return JSON.parse(payload.result.content[0].text) as T;
   }
 });
 

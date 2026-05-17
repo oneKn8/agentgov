@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type { AgentCard } from "../../schema/types.js";
+import { resolveWorkspaceFile } from "../../lib/paths.js";
 
 export interface TrustedProvider {
   domain: string;
@@ -15,7 +16,7 @@ export interface TrustRegistry {
 }
 
 export function loadTrustRegistry(path = "trust-registry.json"): TrustRegistry {
-  return JSON.parse(readFileSync(path, "utf8")) as TrustRegistry;
+  return JSON.parse(readFileSync(resolveWorkspaceFile(path), "utf8")) as TrustRegistry;
 }
 
 export function secretsByKid(registry: TrustRegistry): Record<string, string> {

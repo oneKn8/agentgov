@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { ReleaseDecision, ReleaseFailure } from "../schema/types.js";
 import { verifyCardSignature } from "../tools/trust/verifyCardSignature.js";
 import { checkTrustRegistry, loadTrustRegistry, secretsByKid } from "../tools/trust/checkTrustRegistry.js";
 import { inspectAgentCard } from "../tools/trust/inspectAgentCard.js";
@@ -15,7 +16,7 @@ import { recommendRemediation } from "../tools/release/recommendRemediation.js";
 import { composeReleasePacket } from "../tools/release/composeReleasePacket.js";
 import { persistDecision } from "../tools/release/persistDecision.js";
 import { revokeRelease } from "../tools/release/revokeRelease.js";
-import { SqliteStorage } from "../storage/SqliteStorage.js";
+import { getStorage } from "../storage/sharedStorage.js";
 
 const cardSourceSchema = {
   source: z.string().describe("Agent Card URL or local JSON fixture path"),
@@ -28,13 +29,41 @@ const releaseSchema = {
   eval_path: z.string().describe("Evaluation result JSON path")
 };
 
-export function registerAgentGovTools(server: McpServer): void {
-  let storagePromise: Promise<SqliteStorage> | undefined;
-  const getStorage = () => {
-    storagePromise ??= initializedStorage();
-    return storagePromise;
-  };
+const failureSchema = z
+  .object({
+    id: z.string(),
+    category: z.enum(["policy", "tool_call", "safety", "regression", "evidence", "quality"]),
+    severity: z.enum(["low", "medium", "high", "critical"]),
+    message: z.string(),
+    remediation: z.string().optional()
+  })
+  .passthrough();
 
+const releaseDecisionSchema = z
+  .object({
+    release_id: z.string(),
+    agent_id: z.string(),
+    agent_name: z.string(),
+    verdict: z.enum(["PASS", "WARN", "BLOCK"]),
+    pass_rate: z.number(),
+    critical_failures: z.number(),
+    tool_call_failures: z.number(),
+    policy_failures: z.number(),
+    root_causes: z.array(z.string()),
+    recommended_fixes: z.array(z.string()),
+    owner: z.string(),
+    approval_deadline: z.string(),
+    created_at: z.string(),
+    evidence_ref: z.string(),
+    policy_version: z.string().optional(),
+    failures: z.array(failureSchema),
+    signature: z.string().optional()
+  })
+  .passthrough();
+
+const releaseDecisionCache = new Map<string, Promise<ReleaseDecision>>();
+
+export function registerAgentGovTools(server: McpServer): void {
   server.registerTool(
     "inspect_agent_card",
     {
@@ -145,11 +174,7 @@ export function registerAgentGovTools(server: McpServer): void {
       inputSchema: releaseSchema
     },
     async ({ profile_path, eval_path }) => {
-      const decision = await classifyReleaseRisk(loadAgentProfile(profile_path), ingestEvalResults(eval_path), {
-        profilePath: profile_path,
-        storage: await getStorage()
-      });
-      return jsonResult(decision);
+      return jsonResult(await classifyFromPaths(profile_path, eval_path));
     }
   );
 
@@ -157,32 +182,20 @@ export function registerAgentGovTools(server: McpServer): void {
     "recommend_remediation",
     {
       title: "Recommend Remediation",
-      description: "Return a de-duplicated remediation checklist for a release decision.",
-      inputSchema: releaseSchema
+      description: "Return a de-duplicated remediation checklist from release failures.",
+      inputSchema: { failures: z.array(failureSchema) }
     },
-    async ({ profile_path, eval_path }) => {
-      const decision = await classifyReleaseRisk(loadAgentProfile(profile_path), ingestEvalResults(eval_path), {
-        profilePath: profile_path,
-        storage: await getStorage()
-      });
-      return jsonResult(recommendRemediation(decision.failures));
-    }
+    async ({ failures }) => jsonResult(recommendRemediation(failures as ReleaseFailure[]))
   );
 
   server.registerTool(
     "compose_release_packet",
     {
       title: "Compose Release Packet",
-      description: "Generate Markdown and HTML release packet for human reviewer signoff.",
-      inputSchema: releaseSchema
+      description: "Generate Markdown and HTML release packet for human reviewer signoff from a signed release decision.",
+      inputSchema: { decision: releaseDecisionSchema }
     },
-    async ({ profile_path, eval_path }) => {
-      const decision = await classifyReleaseRisk(loadAgentProfile(profile_path), ingestEvalResults(eval_path), {
-        profilePath: profile_path,
-        storage: await getStorage()
-      });
-      return jsonResult(composeReleasePacket(decision));
-    }
+    async ({ decision }) => jsonResult(composeReleasePacket(decision as ReleaseDecision))
   );
 
   server.registerTool(
@@ -190,15 +203,11 @@ export function registerAgentGovTools(server: McpServer): void {
     {
       title: "Persist Release Decision",
       description: "Persist an idempotent signed release decision to local-first storage.",
-      inputSchema: releaseSchema
+      inputSchema: { decision: releaseDecisionSchema }
     },
-    async ({ profile_path, eval_path }) => {
+    async ({ decision }) => {
       const storage = await getStorage();
-      const decision = await classifyReleaseRisk(loadAgentProfile(profile_path), ingestEvalResults(eval_path), {
-        profilePath: profile_path,
-        storage
-      });
-      await persistDecision(storage, decision);
+      await persistDecision(storage, decision as ReleaseDecision);
       return jsonResult(decision);
     }
   );
@@ -211,17 +220,24 @@ export function registerAgentGovTools(server: McpServer): void {
       inputSchema: {
         release_id: z.string(),
         reason: z.string(),
-        actor: z.string().optional().default("mcp-user")
+        actor: z.string()
       }
     },
     async ({ release_id, reason, actor }) => jsonResult(await revokeRelease(await getStorage(), release_id, reason, actor))
   );
 }
 
-async function initializedStorage(): Promise<SqliteStorage> {
-  const storage = new SqliteStorage();
-  await storage.init();
-  return storage;
+async function classifyFromPaths(profilePath: string, evalPath: string): Promise<ReleaseDecision> {
+  const cacheKey = `${profilePath}\0${evalPath}`;
+  let decision = releaseDecisionCache.get(cacheKey);
+  if (!decision) {
+    decision = classifyReleaseRisk(loadAgentProfile(profilePath), ingestEvalResults(evalPath), {
+      profilePath,
+      storage: await getStorage()
+    });
+    releaseDecisionCache.set(cacheKey, decision);
+  }
+  return decision;
 }
 
 function jsonResult(value: unknown) {

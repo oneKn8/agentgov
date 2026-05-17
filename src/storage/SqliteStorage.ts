@@ -10,6 +10,7 @@ export class SqliteStorage implements Storage {
   constructor(private readonly path = process.env.AGENTGOV_DB ?? "outputs/agentgov.db") {}
 
   async init(): Promise<void> {
+    if (this.db) return;
     mkdirSync(dirname(this.path), { recursive: true });
     this.db = new DatabaseSync(this.path);
     this.db.exec("pragma busy_timeout = 5000;");

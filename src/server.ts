@@ -28,7 +28,7 @@ export function createAgentGovServer() {
         return;
       }
       if (url.pathname === "/readyz") {
-        writeJson(res, 200, readinessPayload());
+        writeJson(res, 200, await readinessPayload());
         return;
       }
       if (url.pathname === "/mcp") {
@@ -86,15 +86,20 @@ async function handleMcpRequest(req: IncomingMessage, res: ServerResponse): Prom
   });
 
   await mcp.connect(transport);
+  let closed = false;
+  const closeOnce = async () => {
+    if (closed) return;
+    closed = true;
+    await transport.close();
+    await mcp.close();
+  };
   res.on("close", () => {
-    void transport.close();
-    void mcp.close();
+    void closeOnce();
   });
   try {
     await transport.handleRequest(req, res, await readJsonBody(req));
   } catch (error) {
-    await transport.close();
-    await mcp.close();
+    await closeOnce();
     throw error;
   }
 }

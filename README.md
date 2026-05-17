@@ -163,8 +163,6 @@ npm run mcp:start
 # AgentGov MCP listening at http://localhost:3000/mcp (Streamable HTTP)
 ```
 
-Remote revocation calls require `AGENTGOV_REVOKE_TOKEN` and the `x-agentgov-revoke-token` header. Without a token, revocation is loopback-only for local demos.
-
 Full Copilot Studio + Power Automate + Dataverse + Entra OAuth setup with troubleshooting: **[`docs/wiring.md`](docs/wiring.md)**.
 
 ---

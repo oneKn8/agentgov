@@ -74,8 +74,9 @@ export function writeError(res: ServerResponse, error: unknown): void {
   writeJson(res, 500, {
     ok: false,
     error: "internal_error",
-    message: error instanceof Error ? error.message : String(error)
+    message: "Internal server error"
   });
+  console.error(error);
 }
 
 function isAllowedOrigin(origin: string): boolean {

@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import type { AgentCard } from "../../schema/types.js";
+import { resolveWorkspaceFile } from "../../lib/paths.js";
 
 export async function inspectAgentCard(source: string, offline = false): Promise<AgentCard & { source: string }> {
   if (offline || source.endsWith(".json")) {
-    const card = JSON.parse(readFileSync(source, "utf8")) as AgentCard;
+    const card = JSON.parse(readFileSync(resolveWorkspaceFile(source), "utf8")) as AgentCard;
     return { ...card, source };
   }
 
