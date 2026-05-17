@@ -1,0 +1,23 @@
+name: agentgov
+metadata:
+  template: agentgov@0.1.0
+
+services:
+  api:
+    project: .
+    language: ts
+    host: containerapp
+    docker:
+      remoteBuild: true
+
+hooks:
+  predeploy:
+    shell: sh
+    run: |
+      echo "AgentGov predeploy: ensure Dockerfile exists before azd up."
+      test -f Dockerfile || {
+        echo "::error::Dockerfile missing. azd up cannot build container."
+        echo "AgentGov ships the engine via Codex on codex/core-engine."
+        echo "Dockerfile is owned there; add one or set AZURE_CONTAINER_REGISTRY_IMAGE to a prebuilt image."
+        exit 1
+      }
