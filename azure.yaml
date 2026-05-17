@@ -1,0 +1,31 @@
+name: agentgov
+metadata:
+  template: agentgov@0.1.0
+
+services:
+  api:
+    project: .
+    language: ts
+    host: containerapp
+    docker:
+      remoteBuild: true
+
+hooks:
+  predeploy:
+    shell: sh
+    run: |
+      # Pass if either path can produce a container:
+      #   (a) AGENTGOV_CONTAINER_IMAGE points at a prebuilt image, or
+      #   (b) a Dockerfile is present for azd to build locally.
+      if [ -n "${AGENTGOV_CONTAINER_IMAGE:-}" ]; then
+        echo "AgentGov predeploy: using prebuilt image AGENTGOV_CONTAINER_IMAGE=${AGENTGOV_CONTAINER_IMAGE}"
+        exit 0
+      fi
+      if [ -f Dockerfile ]; then
+        echo "AgentGov predeploy: Dockerfile found, azd will build locally."
+        exit 0
+      fi
+      echo "::error::Cannot deploy: no Dockerfile and AGENTGOV_CONTAINER_IMAGE is unset."
+      echo "Either commit a Dockerfile (Codex owns this on codex/core-engine)"
+      echo "or set AGENTGOV_CONTAINER_IMAGE to a prebuilt image reference before azd up."
+      exit 1
