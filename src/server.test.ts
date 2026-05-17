@@ -153,6 +153,46 @@ describe("AgentGov HTTP and MCP server", () => {
     expect(payload.result.tools.map((tool) => tool.name)).toEqual(expectedTools);
   });
 
+  it("requires an MCP token when wildcard CORS is enabled", async () => {
+    process.env.AGENTGOV_ALLOW_ANY_ORIGIN = "true";
+    try {
+      const rejected = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/list",
+          params: {}
+        })
+      });
+      expect(rejected.status).toBe(401);
+
+      process.env.AGENTGOV_MCP_TOKEN = "mcp-test-token";
+      const accepted = await fetch(`${baseUrl}/mcp`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+          "x-agentgov-mcp-token": "mcp-test-token"
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {}
+        })
+      });
+      expect(accepted.status).toBe(200);
+    } finally {
+      delete process.env.AGENTGOV_ALLOW_ANY_ORIGIN;
+      delete process.env.AGENTGOV_MCP_TOKEN;
+    }
+  });
+
   it("rejects disallowed CORS origins and unsupported MCP methods", async () => {
     const cors = await fetch(`${baseUrl}/healthz`, {
       headers: { origin: "https://attacker.example" }

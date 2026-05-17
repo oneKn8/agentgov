@@ -3,7 +3,10 @@ import { SqliteStorage } from "./SqliteStorage.js";
 let storagePromise: Promise<SqliteStorage> | undefined;
 
 export function getStorage(): Promise<SqliteStorage> {
-  storagePromise ??= initializedStorage();
+  storagePromise ??= initializedStorage().catch((error) => {
+    storagePromise = undefined;
+    throw error;
+  });
   return storagePromise;
 }
 

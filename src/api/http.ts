@@ -16,7 +16,8 @@ export function applyCors(req: IncomingMessage, res: ServerResponse): boolean {
   const origin = req.headers.origin;
   res.setHeader("vary", "origin");
   res.setHeader("access-control-allow-methods", "GET,POST,OPTIONS");
-  res.setHeader("access-control-allow-headers", "content-type, mcp-session-id, x-agentgov-revoke-token");
+  res.setHeader("access-control-allow-headers", "content-type, mcp-session-id, x-agentgov-mcp-token, x-agentgov-revoke-token");
+  // Origin-less requests come from curl, Node fetch, and server-side MCP clients.
   if (typeof origin !== "string") return true;
   if (!isAllowedOrigin(origin)) return false;
   res.setHeader("access-control-allow-origin", origin);

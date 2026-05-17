@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -43,6 +44,7 @@ export function createAgentGovServer() {
           });
           return;
         }
+        authorizeMcp(req);
         await handleMcpRequest(req, res);
         return;
       }
@@ -102,6 +104,25 @@ async function handleMcpRequest(req: IncomingMessage, res: ServerResponse): Prom
     await closeOnce();
     throw error;
   }
+}
+
+function authorizeMcp(req: IncomingMessage): void {
+  const expected = process.env.AGENTGOV_MCP_TOKEN;
+  if (expected) {
+    const provided = req.headers["x-agentgov-mcp-token"];
+    if (tokenMatches(provided, expected)) return;
+    throw new HttpError(401, "unauthorized", "Missing or invalid MCP token");
+  }
+  if (process.env.AGENTGOV_ALLOW_ANY_ORIGIN === "true") {
+    throw new HttpError(401, "unauthorized", "Set AGENTGOV_MCP_TOKEN before enabling AGENTGOV_ALLOW_ANY_ORIGIN");
+  }
+}
+
+function tokenMatches(provided: string | string[] | undefined, expected: string): boolean {
+  if (typeof provided !== "string") return false;
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  return providedBuffer.length === expectedBuffer.length && timingSafeEqual(providedBuffer, expectedBuffer);
 }
 
 function shutdown(server: ReturnType<typeof createAgentGovServer>): void {
