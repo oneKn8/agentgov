@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: build + test + smoke + schema-drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (tsc + schema export)
+        run: npm run build
+
+      - name: Schema-drift check
+        run: |
+          if ! git diff --exit-code -- schemas/; then
+            echo "::error::Generated schemas/ differ from committed files."
+            echo "Run 'npm run build' locally and commit the regenerated schemas."
+            exit 1
+          fi
+
+      - name: Unit tests (vitest)
+        run: npm test
+
+      - name: Smoke (CLI + policy validate)
+        run: npm run test:smoke
