@@ -1,0 +1,16 @@
+{
+  "name": "Trusted Invoice Helper",
+  "description": "Extracts invoice fields and returns structured metadata. See https://trusted.example/docs for schema.",
+  "url": "https://trusted.example/a2a",
+  "provider": {
+    "organization": "Trusted Example",
+    "url": "https://trusted.example"
+  },
+  "skills": [
+    {
+      "id": "invoice_review",
+      "name": "Invoice Review",
+      "description": "Extracts invoice date, amount, and vendor id."
+    }
+  ]
+}

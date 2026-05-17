@@ -1,0 +1,12 @@
+{
+  "version": "2026-05-17",
+  "trustedProviders": [
+    {
+      "domain": "trusted.example",
+      "kid": "trusted-key-1",
+      "secret": "agentgov-demo-card-secret",
+      "allowedSkills": ["invoice_review", "vendor_lookup"],
+      "maxRisk": 30
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "Trusted Invoice Helper",
+  "description": "Extracts invoice fields and returns structured metadata.",
+  "url": "https://trusted.example/a2a",
+  "provider": {
+    "organization": "Trusted Example",
+    "url": "https://trusted.example"
+  },
+  "skills": [
+    {
+      "id": "invoice_review",
+      "name": "Invoice Review",
+      "description": "Extracts invoice date, amount, and vendor id."
+    }
+  ],
+  "signatures": [
+    {
+      "header": {
+        "alg": "HS256-demo",
+        "kid": "trusted-key-1"
+      },
+      "signature": "4mIbtpjzAEfaNqCEiVVuAAq6xPPLSblsZU0sRTeL5Gk"
+    }
+  ]
+}
