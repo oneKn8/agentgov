@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentGov TrustVerdict",
+  "type": "object",
+  "required": [
+    "decision_id",
+    "agent_name",
+    "source",
+    "verdict",
+    "risk_score",
+    "reasons",
+    "findings",
+    "created_at"
+  ],
+  "properties": {
+    "decision_id": {
+      "type": "string"
+    },
+    "agent_name": {
+      "type": "string"
+    },
+    "source": {
+      "type": "string"
+    },
+    "verdict": {
+      "enum": [
+        "ALLOW",
+        "ALLOW_SANITIZED",
+        "REVIEW",
+        "BLOCK"
+      ]
+    },
+    "risk_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "sanitized_card": {
+      "type": "object"
+    },
+    "registry_match": {
+      "type": "boolean"
+    },
+    "signature_valid": {
+      "type": "boolean"
+    },
+    "policy_version": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "signature": {
+      "type": "string"
+    }
+  }
+}
