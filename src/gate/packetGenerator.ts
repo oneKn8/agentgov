@@ -6,31 +6,41 @@ export interface ReleasePacket {
 }
 
 export function composeReleasePacket(decision: ReleaseDecision): ReleasePacket {
-  const title = `# AgentGov Release Packet: ${decision.agent_name}`;
-  const failures = decision.failures
-    .map((failure) => `- **${failure.severity.toUpperCase()} ${failure.category}**: ${failure.message}${failure.remediation ? `\n  - Fix: ${failure.remediation}` : ""}`)
-    .join("\n");
-  const fixes = decision.recommended_fixes.map((fix) => `- ${fix}`).join("\n") || "- No remediation required.";
-  const markdown = `${title}
+  const markdown = renderReleasePacketMarkdown(decision);
+  const html = renderReleasePacketHtml(decision);
+  return { markdown, html };
+}
 
-**Verdict:** ${decision.verdict}
-**Pass rate:** ${decision.pass_rate}%
-**Owner:** ${decision.owner}
-**Approval deadline:** ${decision.approval_deadline}
-**Evidence:** ${decision.evidence_ref}
-**Signature:** ${decision.signature ?? "unsigned"}
+function renderReleasePacketMarkdown(decision: ReleaseDecision): string {
+  const failures = decision.failures.length
+    ? decision.failures
+        .map(
+          (failure) =>
+            `- **${escapeMarkdownInline(failure.severity.toUpperCase())} ${escapeMarkdownInline(failure.category)}**: ` +
+            `${escapeMarkdownInline(failure.message)}${renderOptionalMarkdownFix(failure.remediation)}`
+        )
+        .join("\n")
+    : "- None";
+  const fixes = renderMarkdownList(decision.recommended_fixes, "No remediation required.");
+
+  return `# AgentGov Release Packet: ${escapeMarkdownInline(decision.agent_name)}
+
+**Verdict:** ${escapeMarkdownInline(decision.verdict)}
+**Pass rate:** ${escapeMarkdownInline(String(decision.pass_rate))}%
+**Owner:** ${escapeMarkdownInline(decision.owner)}
+**Approval deadline:** ${escapeMarkdownInline(decision.approval_deadline)}
+**Evidence:** ${escapeMarkdownInline(decision.evidence_ref)}
+**Signature:** ${escapeMarkdownInline(decision.signature ?? "unsigned")}
 
 ## Root Causes
-${decision.root_causes.map((cause) => `- ${cause}`).join("\n") || "- None"}
+${renderMarkdownList(decision.root_causes, "None")}
 
 ## Findings
-${failures || "- None"}
+${failures}
 
 ## Required Fixes
 ${fixes}
 `;
-  const html = renderReleasePacketHtml(decision);
-  return { markdown, html };
 }
 
 function renderReleasePacketHtml(decision: ReleaseDecision): string {
@@ -68,6 +78,25 @@ function renderList(items: string[], emptyText: string): string {
 
 function renderOptionalFix(remediation?: string): string {
   return remediation ? `<br /><span>Fix: ${escapeHtml(remediation)}</span>` : "";
+}
+
+function renderMarkdownList(items: string[], emptyText: string): string {
+  return items.length
+    ? items.map((item) => `- ${escapeMarkdownInline(item)}`).join("\n")
+    : `- ${escapeMarkdownInline(emptyText)}`;
+}
+
+function renderOptionalMarkdownFix(remediation?: string): string {
+  return remediation ? `\n  - Fix: ${escapeMarkdownInline(remediation)}` : "";
+}
+
+function escapeMarkdownInline(value: string): string {
+  // Newlines are stripped before Markdown escaping, so line-start-only syntax
+  // like headings, blockquotes, and list markers cannot escape the field.
+  return escapeHtml(value)
+    .replace(/\r?\n|\r/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/([`*_[\]()!|])/g, "\\$1");
 }
 
 function escapeHtml(value: string): string {
