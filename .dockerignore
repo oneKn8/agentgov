@@ -1,0 +1,10 @@
+.git
+.github
+node_modules
+dist
+outputs
+coverage
+.env
+.DS_Store
+npm-debug.log*
+*.tsbuildinfo
