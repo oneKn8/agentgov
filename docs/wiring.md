@@ -11,7 +11,7 @@ Step-by-step setup for connecting AgentGov to Microsoft Copilot Studio, Power Au
 
 ## Step 1 — Deploy AgentGov
 
-### Local (devtunnel) — fastest for demo
+### Local (Node) — for development
 
 ```bash
 # In one terminal: build and start the MCP server
@@ -28,6 +28,32 @@ devtunnel host -p 3000 --allow-anonymous
 # Note the public URL: https://abc-3000.devtunnels.ms
 ```
 
+### Local (Docker) — fastest reproducible demo
+
+The repo ships a multi-stage `Dockerfile` at the root (Node 22 → distroless-style runtime, non-root `agentgov` user, `/data` writable for SQLite, `HEALTHCHECK` against `/healthz`).
+
+```bash
+# Build the image (~1-2 min cold, <10s warm)
+docker build -t agentgov:local .
+
+# Run with persistent SQLite + the production token gates set
+mkdir -p $(pwd)/agentgov-data
+docker run --rm -p 3000:3000 \
+  -v "$(pwd)/agentgov-data:/data" \
+  -e AGENTGOV_HMAC_SECRET="$(openssl rand -hex 32)" \
+  -e AGENTGOV_MCP_TOKEN="$(openssl rand -hex 32)" \
+  -e AGENTGOV_REVOKE_TOKEN="$(openssl rand -hex 32)" \
+  agentgov:local
+# Listening at http://localhost:3000, SQLite at $(pwd)/agentgov-data/agentgov.db
+
+# Expose via devtunnel (in a separate terminal)
+devtunnel host -p 3000 --allow-anonymous
+```
+
+> **Volume permissions.** The container runs as a non-root `agentgov` user (uid/gid created during the image build). If your host's mounted `agentgov-data/` is owned by a different uid, the container will fail to write. Either `sudo chown -R 1000:1000 agentgov-data/` (the agentgov uid baked into the image), or omit the volume mount and let SQLite live inside the ephemeral container for the duration of the demo.
+
+> **Fixtures baked in.** The image includes `fixtures/`, `policies/`, and `target-agents/` so all CLI/MCP demo paths work out of the box without bind-mounting the repo. This includes `fixtures/agent-cards/poisoned-injection.json`, which is intentional test content but contains prompt-injection strings; treat the image as a demo artifact, not a production base layer to inherit from.
+
 The four HTTP surfaces become:
 
 | Endpoint | Method | Purpose |
@@ -41,29 +67,30 @@ See **Step 2 — Authentication** below for the headers Copilot Studio must send
 
 ### Production — Azure Container Apps via `azd`
 
-The repo ships an `azd`-compatible `azure.yaml` plus a Bicep template at `infra/main.bicep` + `infra/workload.bicep`.
+The repo ships an `azd`-compatible `azure.yaml` plus a Bicep template at `infra/main.bicep` + `infra/workload.bicep`, and a `Dockerfile` at the root. `azd up` builds the Dockerfile remotely (via `docker.remoteBuild: true` in `azure.yaml`), pushes it to an azd-managed Azure Container Registry, and binds the resulting image to the Container App.
 
 ```bash
 azd auth login
 azd init                          # accept defaults; name agentgov
 azd env set AGENTGOV_TIER paid    # 'free' = scale-to-zero, no observability; 'paid' = min=1 + Log Analytics + App Insights
-azd env set AGENTGOV_CONTAINER_IMAGE myacr.azurecr.io/agentgov:0.1.0  # set when a real image is published
 azd env set AGENTGOV_MCP_TOKEN "$(openssl rand -hex 32)"
 azd env set AGENTGOV_REVOKE_TOKEN "$(openssl rand -hex 32)"
 azd up                            # pick subscription + region (eastus or westus2)
 ```
 
+Optional: skip the remote build by setting `AGENTGOV_CONTAINER_IMAGE` to a tag you've pushed elsewhere (e.g. a GitHub Actions build into GHCR). The predeploy hook honors that override and azd binds the running container to it.
+
 What `azd up` actually provisions (per `infra/workload.bicep`):
 
 - Container Apps Environment (Consumption workload profile)
-- Container App on port 8080 with `/healthz` liveness + `/readyz` readiness probes
+- Container App on port 3000 — same port the Dockerfile defaults to and the local `npm run mcp:start` listens on, so the image runs identically in every environment — with `/healthz` liveness + `/readyz` readiness probes
 - Container Apps secrets carrying `AGENTGOV_MCP_TOKEN` and `AGENTGOV_REVOKE_TOKEN`
 - When `tier=paid`: Log Analytics workspace + Application Insights component, with `APPLICATIONINSIGHTS_CONNECTION_STRING` wired into the container
 
 What it does **not** provision (intentional, to keep `tier=free` actually free):
 
-- No Azure Container Registry — bring your own (`AGENTGOV_CONTAINER_IMAGE` must point at a reachable image; the predeploy hook fails fast if no image is set and no `Dockerfile` is present)
-- No managed database — AgentGov writes decision records to local SQLite (`AGENTGOV_DB`). Dataverse / SharePoint adapters are planned (see **Step 7**) but not wired in the current engine.
+- No standalone Azure Container Registry beyond what `azd` creates for itself — bring your own image if you'd rather, via `AGENTGOV_CONTAINER_IMAGE`.
+- No managed database — AgentGov writes decision records to local SQLite at `/data/agentgov.db` (the Dockerfile sets `AGENTGOV_DB=/data/agentgov.db` and `chown`s `/data` to the non-root user). For persistence across revision rollouts, attach a Container Apps storage mount to `/data`. Dataverse / SharePoint adapters are planned (see **Step 7**) but not wired in the current engine.
 
 Output prints `AGENTGOV_FQDN` and `AGENTGOV_URL`; the MCP endpoint is `${AGENTGOV_URL}/mcp`.
 
@@ -244,7 +271,7 @@ Every env var the engine reads, with default and whether it is safe to omit.
 
 | Variable | Default | Safe to omit? | Purpose |
 |---|---|---|---|
-| `PORT` | `3000` | yes | HTTP port for the MCP + health + revoke server. Set to `8080` for Container Apps. |
+| `PORT` | `3000` | yes | HTTP port for the MCP + health + revoke server. The Dockerfile and Container Apps Bicep both use 3000 — override only when an existing service on the host already binds that port. |
 | `AGENTGOV_MCP_TOKEN` | _(none)_ | **no for production** | Bearer token clients must send as `x-agentgov-mcp-token`. Required when `AGENTGOV_ALLOW_ANY_ORIGIN=true`. |
 | `AGENTGOV_REVOKE_TOKEN` | _(none)_ | **no for production** | Bearer token clients must send as `x-agentgov-revoke-token` on `POST /releases/{id}/revoke`. |
 | `AGENTGOV_ALLOW_ANY_ORIGIN` | `false` | yes | Set to `true` to disable origin pinning. **Only safe when `AGENTGOV_MCP_TOKEN` is also set**; the engine refuses to start otherwise. |

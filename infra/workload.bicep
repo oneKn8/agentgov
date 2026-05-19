@@ -87,7 +87,7 @@ var baseEnvVars = [
   }
   {
     name: 'PORT'
-    value: '8080'
+    value: '3000'
   }
 ]
 
@@ -141,7 +141,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
       activeRevisionsMode: 'Single'
       ingress: {
         external: true
-        targetPort: 8080
+        targetPort: 3000
         transport: 'auto'
         allowInsecure: false
         traffic: [
@@ -168,7 +168,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               type: 'Liveness'
               httpGet: {
                 path: '/healthz'
-                port: 8080
+                port: 3000
               }
               initialDelaySeconds: 5
               periodSeconds: 30
@@ -177,7 +177,7 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
               type: 'Readiness'
               httpGet: {
                 path: '/readyz'
-                port: 8080
+                port: 3000
               }
               initialDelaySeconds: 2
               periodSeconds: 10

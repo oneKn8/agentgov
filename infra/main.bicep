@@ -16,7 +16,7 @@ param location string
 @description('Service tier. free: Consumption profile, scale-to-zero, no observability. paid: adds Log Analytics + App Insights and pins minReplicas=1.')
 param tier string = 'free'
 
-@description('Fully-qualified container image reference (e.g. myacr.azurecr.io/agentgov:0.1.0). Override at deploy time once Codex ships a Dockerfile.')
+@description('Fully-qualified container image reference (e.g. myacr.azurecr.io/agentgov:0.1.0). The repo ships a Dockerfile at the root; with `azure.yaml` having `docker.remoteBuild: true`, `azd up` builds and pushes that image and re-runs the deployment with the resulting reference. The default below is only used during a first-pass infra-only deploy before azd has built; do not run against it in production.')
 param containerImage string = 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
 
 @secure()
