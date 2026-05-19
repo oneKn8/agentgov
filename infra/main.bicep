@@ -17,7 +17,7 @@ param location string
 param tier string = 'free'
 
 @minLength(1)
-@description('Fully-qualified container image reference (e.g. myacr.azurecr.io/agentgov:0.1.0 or the azd-managed image populated via SERVICE_API_IMAGE_NAME). The repo ships a Dockerfile at the root; with `azure.yaml` having `docker.remoteBuild: true`, `azd up` builds and pushes that image and supplies the resulting reference via the parameters file. No default — direct `az deployment` callers MUST pass a value, which prevents the resource group from silently provisioning a hello-world container on the production FQDN.')
+@description('Fully-qualified container image reference. The repo ships a Dockerfile at the root and `azure.yaml` declares `docker.remoteBuild: true`, so the canonical flow is `azd up`: azd builds the Dockerfile remotely, pushes it to its managed ACR, sets `SERVICE_API_IMAGE_NAME`, and `infra/main.parameters.json` substitutes that into this param. Operators with a pre-built image (CI-published tag, mirror, etc.) can override before `azd up` with `azd env set SERVICE_API_IMAGE_NAME myacr.azurecr.io/agentgov:0.1.0`. No default — direct `az deployment` callers MUST pass a value, which prevents the resource group from silently provisioning a hello-world container on the production FQDN.')
 param containerImage string
 
 @secure()

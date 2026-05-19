@@ -94,9 +94,11 @@ See **Step 2 — Authentication** below for the headers Copilot Studio must send
 
 ### Production — Azure Container Apps via `azd`
 
-The repo ships an `azd`-compatible `azure.yaml` plus a Bicep template at `infra/main.bicep` + `infra/workload.bicep`, and a `Dockerfile` at the root. `azd up` builds the Dockerfile remotely (via `docker.remoteBuild: true` in `azure.yaml`), pushes it to an azd-managed Azure Container Registry, and binds the resulting image to the Container App.
+The repo ships an `azd`-compatible `azure.yaml` plus a Bicep template at `infra/main.bicep` + `infra/workload.bicep`, and a `Dockerfile` at the root. `azd up` is the single command — azd handles build, push, and provision in order:
 
-The Bicep template requires a non-empty `containerImage` parameter (`@minLength(1)` — no default), and `infra/main.parameters.json` substitutes the value from `AGENTGOV_CONTAINER_IMAGE`. **Set that env var before `azd up`** or provision will fail-fast with a clear Bicep validation error. The first run usually points it at a hand-built image; subsequent `azd deploy` calls rebuild and push to the same tag.
+1. `azd package` (called implicitly by `azd up`) builds the Dockerfile remotely via `docker.remoteBuild: true` in `azure.yaml` and pushes it to an azd-managed Azure Container Registry, then sets `SERVICE_API_IMAGE_NAME` to the resulting tag.
+2. `azd provision` runs Bicep with that env var substituted into the `containerImage` param via `infra/main.parameters.json`.
+3. `azd deploy` updates the running Container App's image to match.
 
 ```bash
 azd auth login
@@ -105,16 +107,17 @@ azd env set AGENTGOV_TIER paid    # 'free' = scale-to-zero, no observability; 'p
 azd env set AGENTGOV_MCP_TOKEN "$(openssl rand -hex 32)"
 azd env set AGENTGOV_REVOKE_TOKEN "$(openssl rand -hex 32)"
 
-# Required: a pre-built image reference. Either build and push your own:
-#   docker build -t myacr.azurecr.io/agentgov:0.1.0 .
-#   docker push myacr.azurecr.io/agentgov:0.1.0
-# …or point at a tag your CI already publishes (e.g. GHCR).
-azd env set AGENTGOV_CONTAINER_IMAGE myacr.azurecr.io/agentgov:0.1.0
-
 azd up                            # pick subscription + region (eastus or westus2)
 ```
 
-This intentionally removes the previous hello-world default. A direct `az deployment` against the Bicep without a `containerImage` would have provisioned a healthy-looking `mcr.microsoft.com/azuredocs/containerapps-helloworld:latest` on the production FQDN, which is exactly the silent-wrong-container failure mode worth refusing.
+**Skip the azd remote build** (operators with a pre-built image — CI-published GHCR tag, ACR mirror, etc.):
+
+```bash
+azd env set SERVICE_API_IMAGE_NAME myacr.azurecr.io/agentgov:0.1.0
+azd up                            # azd skips the build, binds the running container to your image
+```
+
+The Bicep template enforces `@minLength(1)` on the `containerImage` param with no default. Without azd's auto-injection or an explicit `SERVICE_API_IMAGE_NAME` override, `az deployment` fails fast with a clear Bicep validation error. This intentionally replaces the previous `mcr.microsoft.com/azuredocs/containerapps-helloworld:latest` default, which would have silently provisioned a healthy-looking hello-world container on the production FQDN.
 
 What `azd up` actually provisions (per `infra/workload.bicep`):
 
@@ -125,7 +128,7 @@ What `azd up` actually provisions (per `infra/workload.bicep`):
 
 What it does **not** provision (intentional, to keep `tier=free` actually free):
 
-- No standalone Azure Container Registry beyond what `azd` creates for itself — bring your own image if you'd rather, via `AGENTGOV_CONTAINER_IMAGE`.
+- No standalone Azure Container Registry beyond what `azd` creates for itself — bring your own image if you'd rather, via `azd env set SERVICE_API_IMAGE_NAME <your-image-ref>` before `azd up`.
 - No managed database — AgentGov writes decision records to local SQLite at `/data/agentgov.db` (the Dockerfile sets `AGENTGOV_DB=/data/agentgov.db` and `chown`s `/data` to the non-root user). For persistence across revision rollouts, attach a Container Apps storage mount to `/data`. Dataverse / SharePoint adapters are planned (see **Step 7**) but not wired in the current engine.
 
 Output prints `AGENTGOV_FQDN` and `AGENTGOV_URL`; the MCP endpoint is `${AGENTGOV_URL}/mcp`.
@@ -316,6 +319,6 @@ Every env var the engine reads, with default and whether it is safe to omit.
 | `AGENTGOV_WORKSPACE_ROOT` | `process.cwd()` | yes | Workspace root used by path-resolution guard. Set when AgentGov runs from a different directory than the policy/target-agent files. |
 | `AGENTGOV_DB` | `outputs/agentgov.db` | yes | SQLite file path for the decision table. Parent directory must be writable. |
 | `AGENTGOV_HMAC_SECRET` | _(insecure default)_ | **no for production** | HMAC signing secret for `TrustVerdict` and `ReleaseDecision`. **Rotating this invalidates every previously-signed decision** — `agentgov signature verify` returns false on rows written under the old secret. Either keep the old secret reachable for retroactive verification or re-issue all decisions under the new one. Never generate inline with `$(openssl rand)` at startup if SQLite is persistent. |
-| `AGENTGOV_OTEL_FILE` | `outputs/otel-spans.jsonl` | yes | JSONL file the gate emits spans into. (Currently the Trust Gate emits; the Release Gate path is pending.) |
+| `AGENTGOV_OTEL_FILE` | `outputs/otel-spans.jsonl` | yes | JSONL file the gates emit spans into. Both Trust Gate (`agentgov.trust.verdict`) and Release Gate (`agentgov.release.verdict`) write here. See `docs/observability.md` for the attribute schema. |
 
 Set them inline (`VAR=value npm run mcp:start`), via a `.env`-style loader of your choice, or via `azd env set VAR value` for Container Apps.

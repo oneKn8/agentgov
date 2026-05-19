@@ -15,17 +15,13 @@ hooks:
     shell: sh
     run: |
       # The repo ships a Dockerfile at the root; azd builds it remotely thanks
-      # to docker.remoteBuild above. Operators can still override by setting
-      # AGENTGOV_CONTAINER_IMAGE to a prebuilt reference (e.g. a tag pushed by
-      # CI), in which case azd skips the build and binds the running container
-      # to that image.
-      if [ -n "${AGENTGOV_CONTAINER_IMAGE:-}" ]; then
-        echo "AgentGov predeploy: using prebuilt image AGENTGOV_CONTAINER_IMAGE=${AGENTGOV_CONTAINER_IMAGE}"
-        exit 0
+      # to docker.remoteBuild above and sets SERVICE_API_IMAGE_NAME, which
+      # infra/main.parameters.json substitutes into the containerImage Bicep
+      # param. Operators with a pre-built image override via
+      # `azd env set SERVICE_API_IMAGE_NAME <ref>` before `azd up`.
+      if [ ! -f Dockerfile ]; then
+        echo "::error::Cannot deploy: Dockerfile is missing from the repo root."
+        echo "azd up needs the Dockerfile to remote-build the image."
+        exit 1
       fi
-      if [ -f Dockerfile ]; then
-        echo "AgentGov predeploy: Dockerfile present, azd will build and push it."
-        exit 0
-      fi
-      echo "::error::Cannot deploy: Dockerfile is missing from the repo root and AGENTGOV_CONTAINER_IMAGE is unset."
-      exit 1
+      echo "AgentGov predeploy: Dockerfile present, azd will build, push, and set SERVICE_API_IMAGE_NAME."
