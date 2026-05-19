@@ -612,7 +612,7 @@
                 <dt>failure_categories</dt><dd>${fmt.escape((span.attributes?.["agentgov.failure_categories"] ?? []).join(", ") || "—")}</dd>
               </dl>
             </div>`
-          : `<div class="section"><h2>linked otel span</h2><div style="color:var(--text-faint);font-family:var(--mono);font-size:12px">no matching span in outputs/otel-spans.jsonl — release-gate emission is on the roadmap</div></div>`;
+          : `<div class="section"><h2>linked otel span</h2><div style="color:var(--text-faint);font-family:var(--mono);font-size:12px">no matching span in outputs/otel-spans.jsonl — both Trust and Release gates emit today, so this verdict was issued before the current emit code shipped. Re-run the gate to generate a fresh span.</div></div>`;
 
         detail.innerHTML = `
           <div class="detail-head">
