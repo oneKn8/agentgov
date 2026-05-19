@@ -14,12 +14,24 @@ Step-by-step setup for connecting AgentGov to Microsoft Copilot Studio, Power Au
 ### Local (Node) — for development
 
 ```bash
-# In one terminal: build and start the MCP server
 cd agentgov
 npm run build          # tsc + schema export -> dist/
-AGENTGOV_HMAC_SECRET="$(openssl rand -hex 32)" \
-AGENTGOV_MCP_TOKEN="$(openssl rand -hex 32)" \
-AGENTGOV_REVOKE_TOKEN="$(openssl rand -hex 32)" \
+
+# Generate persistent secrets ONCE. Inline $(openssl rand -hex 32) on
+# every invocation rotates the HMAC secret, which silently invalidates
+# every TrustVerdict / ReleaseDecision sitting in outputs/agentgov.db.
+# .env.agentgov is gitignored via the existing .env.* rule.
+if [ ! -f .env.agentgov ]; then
+  umask 077
+  cat > .env.agentgov <<EOF
+AGENTGOV_HMAC_SECRET=$(openssl rand -hex 32)
+AGENTGOV_MCP_TOKEN=$(openssl rand -hex 32)
+AGENTGOV_REVOKE_TOKEN=$(openssl rand -hex 32)
+EOF
+fi
+
+# In one terminal: load secrets and start the MCP server
+set -a; . ./.env.agentgov; set +a
 npm run mcp:start
 # Listening at http://localhost:3000
 
@@ -27,6 +39,8 @@ npm run mcp:start
 devtunnel host -p 3000 --allow-anonymous
 # Note the public URL: https://abc-3000.devtunnels.ms
 ```
+
+> **Rotation rule.** Treat `AGENTGOV_HMAC_SECRET` like a database encryption key: once decisions are persisted to SQLite, rotating the secret means existing rows cannot be verified by `agentgov signature verify` anymore. To rotate safely, keep the old secret reachable for retroactive verification, or re-issue every decision under the new secret. The "generate once, source thereafter" pattern above keeps the persisted audit trail verifiable across restarts.
 
 ### Local (Docker) — fastest reproducible demo
 
@@ -36,19 +50,32 @@ The repo ships a multi-stage `Dockerfile` at the root: build stage compiles Type
 # Build the image (~1-2 min cold, <10s warm)
 docker build -t agentgov:local .
 
-# Run with a named volume for persistent SQLite + production token gates
+# Generate persistent secrets ONCE (same .env.agentgov as the Node path —
+# one file, two consumers). Inline -e VAR="$(openssl rand ...)" on each
+# docker run would rotate AGENTGOV_HMAC_SECRET, invalidating every signed
+# decision in the persistent /data volume.
+if [ ! -f .env.agentgov ]; then
+  umask 077
+  cat > .env.agentgov <<EOF
+AGENTGOV_HMAC_SECRET=$(openssl rand -hex 32)
+AGENTGOV_MCP_TOKEN=$(openssl rand -hex 32)
+AGENTGOV_REVOKE_TOKEN=$(openssl rand -hex 32)
+EOF
+fi
+
+# Run with a named volume for persistent SQLite + secrets via env-file
 docker volume create agentgov-data
 docker run --rm -p 3000:3000 \
   -v agentgov-data:/data \
-  -e AGENTGOV_HMAC_SECRET="$(openssl rand -hex 32)" \
-  -e AGENTGOV_MCP_TOKEN="$(openssl rand -hex 32)" \
-  -e AGENTGOV_REVOKE_TOKEN="$(openssl rand -hex 32)" \
+  --env-file .env.agentgov \
   agentgov:local
 # Listening at http://localhost:3000, SQLite at /data/agentgov.db inside the volume
 
 # Expose via devtunnel (in a separate terminal)
 devtunnel host -p 3000 --allow-anonymous
 ```
+
+> **Rotation rule (Docker edition).** Same as the Node path: if you regenerate `.env.agentgov` between `docker run` invocations, the persistent `agentgov-data` volume retains decisions signed under the old `AGENTGOV_HMAC_SECRET` that the new run cannot verify. Either keep the env file stable for the life of the volume, archive each rotation's secret alongside its decision range, or `docker volume rm agentgov-data` before rotating so the audit trail starts clean.
 
 > **Why a named volume, not a bind mount.** The container runs as a non-root `agentgov` user created with `useradd --system`, so the UID is allocated from the system range (typically 100–999 on Debian/`bookworm-slim`) — it is **not** guaranteed to be `1000`. A named Docker volume inherits the container's uid/gid automatically and avoids the host/container UID mismatch entirely. If you must bind-mount a host directory (e.g. for inspecting `agentgov.db` from the host), inspect the uid first with `docker run --rm agentgov:local id agentgov` and `chown` to whatever it prints, or run the container as the host user with `--user "$(id -u):$(id -g)"`.
 
@@ -288,7 +315,7 @@ Every env var the engine reads, with default and whether it is safe to omit.
 | `AGENTGOV_ALLOW_LOOPBACK_REVOKE` | `false` | yes | Set to `true` to allow `POST /releases/{id}/revoke` from `127.0.0.1` / `::1` without a revoke token. Useful for cron-driven revocation on the host. |
 | `AGENTGOV_WORKSPACE_ROOT` | `process.cwd()` | yes | Workspace root used by path-resolution guard. Set when AgentGov runs from a different directory than the policy/target-agent files. |
 | `AGENTGOV_DB` | `outputs/agentgov.db` | yes | SQLite file path for the decision table. Parent directory must be writable. |
-| `AGENTGOV_HMAC_SECRET` | _(insecure default)_ | **no for production** | HMAC signing secret for `TrustVerdict` and `ReleaseDecision`. Rotate by re-issuing decisions. |
+| `AGENTGOV_HMAC_SECRET` | _(insecure default)_ | **no for production** | HMAC signing secret for `TrustVerdict` and `ReleaseDecision`. **Rotating this invalidates every previously-signed decision** — `agentgov signature verify` returns false on rows written under the old secret. Either keep the old secret reachable for retroactive verification or re-issue all decisions under the new one. Never generate inline with `$(openssl rand)` at startup if SQLite is persistent. |
 | `AGENTGOV_OTEL_FILE` | `outputs/otel-spans.jsonl` | yes | JSONL file the gate emits spans into. (Currently the Trust Gate emits; the Release Gate path is pending.) |
 
 Set them inline (`VAR=value npm run mcp:start`), via a `.env`-style loader of your choice, or via `azd env set VAR value` for Container Apps.

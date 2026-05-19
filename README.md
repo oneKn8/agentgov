@@ -163,15 +163,21 @@ npm run mcp:start
 # AgentGov MCP listening at http://localhost:3000/mcp (Streamable HTTP)
 ```
 
-Or run the same server in a container (non-root, persistent SQLite under `/data` via named volume):
+Or run the same server in a container (non-root, persistent SQLite under `/data` via named volume, secrets via gitignored env-file so HMAC signatures stay verifiable across restarts):
 
 ```bash
 docker build -t agentgov:local .
 docker volume create agentgov-data
-docker run --rm -p 3000:3000 -v agentgov-data:/data \
-  -e AGENTGOV_HMAC_SECRET="$(openssl rand -hex 32)" \
-  -e AGENTGOV_MCP_TOKEN="$(openssl rand -hex 32)" \
-  agentgov:local
+
+# Generate persistent secrets once — see docs/wiring.md for rotation rules
+[ -f .env.agentgov ] || { umask 077; cat > .env.agentgov <<EOF
+AGENTGOV_HMAC_SECRET=$(openssl rand -hex 32)
+AGENTGOV_MCP_TOKEN=$(openssl rand -hex 32)
+AGENTGOV_REVOKE_TOKEN=$(openssl rand -hex 32)
+EOF
+}
+
+docker run --rm -p 3000:3000 -v agentgov-data:/data --env-file .env.agentgov agentgov:local
 ```
 
 Production deployment to Azure Container Apps via `azd up` is wired in `azure.yaml` + `infra/main.bicep`. Full Copilot Studio + Power Automate + Dataverse + Entra OAuth setup with troubleshooting: **[`docs/wiring.md`](docs/wiring.md)**.
