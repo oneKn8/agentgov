@@ -11,15 +11,27 @@ Step-by-step setup for connecting AgentGov to Microsoft Copilot Studio, Power Au
 
 ## Step 1 — Deploy AgentGov
 
-### Local (devtunnel) — fastest for demo
+### Local (Node) — for development
 
 ```bash
-# In one terminal: build and start the MCP server
 cd agentgov
 npm run build          # tsc + schema export -> dist/
-AGENTGOV_HMAC_SECRET="$(openssl rand -hex 32)" \
-AGENTGOV_MCP_TOKEN="$(openssl rand -hex 32)" \
-AGENTGOV_REVOKE_TOKEN="$(openssl rand -hex 32)" \
+
+# Generate persistent secrets ONCE. Inline $(openssl rand -hex 32) on
+# every invocation rotates the HMAC secret, which silently invalidates
+# every TrustVerdict / ReleaseDecision sitting in outputs/agentgov.db.
+# .env.agentgov is gitignored via the existing .env.* rule.
+if [ ! -f .env.agentgov ]; then
+  umask 077
+  cat > .env.agentgov <<EOF
+AGENTGOV_HMAC_SECRET=$(openssl rand -hex 32)
+AGENTGOV_MCP_TOKEN=$(openssl rand -hex 32)
+AGENTGOV_REVOKE_TOKEN=$(openssl rand -hex 32)
+EOF
+fi
+
+# In one terminal: load secrets and start the MCP server
+set -a; . ./.env.agentgov; set +a
 npm run mcp:start
 # Listening at http://localhost:3000
 
@@ -27,6 +39,47 @@ npm run mcp:start
 devtunnel host -p 3000 --allow-anonymous
 # Note the public URL: https://abc-3000.devtunnels.ms
 ```
+
+> **Rotation rule.** Treat `AGENTGOV_HMAC_SECRET` like a database encryption key: once decisions are persisted to SQLite, rotating the secret means existing rows cannot be verified by `agentgov signature verify` anymore. To rotate safely, keep the old secret reachable for retroactive verification, or re-issue every decision under the new secret. The "generate once, source thereafter" pattern above keeps the persisted audit trail verifiable across restarts.
+
+### Local (Docker) — fastest reproducible demo
+
+The repo ships a multi-stage `Dockerfile` at the root: build stage compiles TypeScript, runtime stage is `node:22-bookworm-slim` (small but not distroless — `apt`, shell, and glibc are present, which keeps the `HEALTHCHECK` `node -e fetch(...)` pattern viable). Runs as a non-root `agentgov` user, `/data` writable for SQLite, `HEALTHCHECK` against `/healthz`.
+
+```bash
+# Build the image (~1-2 min cold, <10s warm)
+docker build -t agentgov:local .
+
+# Generate persistent secrets ONCE (same .env.agentgov as the Node path —
+# one file, two consumers). Inline -e VAR="$(openssl rand ...)" on each
+# docker run would rotate AGENTGOV_HMAC_SECRET, invalidating every signed
+# decision in the persistent /data volume.
+if [ ! -f .env.agentgov ]; then
+  umask 077
+  cat > .env.agentgov <<EOF
+AGENTGOV_HMAC_SECRET=$(openssl rand -hex 32)
+AGENTGOV_MCP_TOKEN=$(openssl rand -hex 32)
+AGENTGOV_REVOKE_TOKEN=$(openssl rand -hex 32)
+EOF
+fi
+
+# Run with a named volume for persistent SQLite + secrets via env-file
+docker volume create agentgov-data
+docker run --rm -p 3000:3000 \
+  -v agentgov-data:/data \
+  --env-file .env.agentgov \
+  agentgov:local
+# Listening at http://localhost:3000, SQLite at /data/agentgov.db inside the volume
+
+# Expose via devtunnel (in a separate terminal)
+devtunnel host -p 3000 --allow-anonymous
+```
+
+> **Rotation rule (Docker edition).** Same as the Node path: if you regenerate `.env.agentgov` between `docker run` invocations, the persistent `agentgov-data` volume retains decisions signed under the old `AGENTGOV_HMAC_SECRET` that the new run cannot verify. Either keep the env file stable for the life of the volume, archive each rotation's secret alongside its decision range, or `docker volume rm agentgov-data` before rotating so the audit trail starts clean.
+
+> **Why a named volume, not a bind mount.** The container runs as a non-root `agentgov` user created with `useradd --system`, so the UID is allocated from the system range (typically 100–999 on Debian/`bookworm-slim`) — it is **not** guaranteed to be `1000`. A named Docker volume inherits the container's uid/gid automatically and avoids the host/container UID mismatch entirely. If you must bind-mount a host directory (e.g. for inspecting `agentgov.db` from the host), inspect the uid first with `docker run --rm agentgov:local id agentgov` and `chown` to whatever it prints, or run the container as the host user with `--user "$(id -u):$(id -g)"`.
+
+> **Fixtures baked in.** The image includes `fixtures/`, `policies/`, and `target-agents/` so all CLI/MCP demo paths work out of the box without bind-mounting the repo. This includes `fixtures/agent-cards/poisoned-injection.json`, which is intentional test content but contains prompt-injection strings; treat the image as a demo artifact, not a production base layer to inherit from.
 
 The four HTTP surfaces become:
 
@@ -41,29 +94,42 @@ See **Step 2 — Authentication** below for the headers Copilot Studio must send
 
 ### Production — Azure Container Apps via `azd`
 
-The repo ships an `azd`-compatible `azure.yaml` plus a Bicep template at `infra/main.bicep` + `infra/workload.bicep`.
+The repo ships an `azd`-compatible `azure.yaml` plus a Bicep template at `infra/main.bicep` + `infra/workload.bicep`, and a `Dockerfile` at the root. `azd up` is the single command — azd handles build, push, and provision in order:
+
+1. `azd package` (called implicitly by `azd up`) builds the Dockerfile remotely via `docker.remoteBuild: true` in `azure.yaml` and pushes it to an azd-managed Azure Container Registry, then sets `SERVICE_API_IMAGE_NAME` to the resulting tag.
+2. `azd provision` runs Bicep with that env var substituted into the `containerImage` param via `infra/main.parameters.json`.
+3. `azd deploy` updates the running Container App's image to match.
 
 ```bash
 azd auth login
 azd init                          # accept defaults; name agentgov
 azd env set AGENTGOV_TIER paid    # 'free' = scale-to-zero, no observability; 'paid' = min=1 + Log Analytics + App Insights
-azd env set AGENTGOV_CONTAINER_IMAGE myacr.azurecr.io/agentgov:0.1.0  # set when a real image is published
 azd env set AGENTGOV_MCP_TOKEN "$(openssl rand -hex 32)"
 azd env set AGENTGOV_REVOKE_TOKEN "$(openssl rand -hex 32)"
+
 azd up                            # pick subscription + region (eastus or westus2)
 ```
+
+**Skip the azd remote build** (operators with a pre-built image — CI-published GHCR tag, ACR mirror, etc.):
+
+```bash
+azd env set SERVICE_API_IMAGE_NAME myacr.azurecr.io/agentgov:0.1.0
+azd up                            # azd skips the build, binds the running container to your image
+```
+
+The Bicep template enforces `@minLength(1)` on the `containerImage` param with no default. Without azd's auto-injection or an explicit `SERVICE_API_IMAGE_NAME` override, `az deployment` fails fast with a clear Bicep validation error. This intentionally replaces the previous `mcr.microsoft.com/azuredocs/containerapps-helloworld:latest` default, which would have silently provisioned a healthy-looking hello-world container on the production FQDN.
 
 What `azd up` actually provisions (per `infra/workload.bicep`):
 
 - Container Apps Environment (Consumption workload profile)
-- Container App on port 8080 with `/healthz` liveness + `/readyz` readiness probes
+- Container App on port 3000 — same port the Dockerfile defaults to and the local `npm run mcp:start` listens on, so the image runs identically in every environment — with `/healthz` liveness + `/readyz` readiness probes
 - Container Apps secrets carrying `AGENTGOV_MCP_TOKEN` and `AGENTGOV_REVOKE_TOKEN`
 - When `tier=paid`: Log Analytics workspace + Application Insights component, with `APPLICATIONINSIGHTS_CONNECTION_STRING` wired into the container
 
 What it does **not** provision (intentional, to keep `tier=free` actually free):
 
-- No Azure Container Registry — bring your own (`AGENTGOV_CONTAINER_IMAGE` must point at a reachable image; the predeploy hook fails fast if no image is set and no `Dockerfile` is present)
-- No managed database — AgentGov writes decision records to local SQLite (`AGENTGOV_DB`). Dataverse / SharePoint adapters are planned (see **Step 7**) but not wired in the current engine.
+- No standalone Azure Container Registry beyond what `azd` creates for itself — bring your own image if you'd rather, via `azd env set SERVICE_API_IMAGE_NAME <your-image-ref>` before `azd up`.
+- No managed database — AgentGov writes decision records to local SQLite at `/data/agentgov.db` (the Dockerfile sets `AGENTGOV_DB=/data/agentgov.db` and `chown`s `/data` to the non-root user). For persistence across revision rollouts, attach a Container Apps storage mount to `/data`. Dataverse / SharePoint adapters are planned (see **Step 7**) but not wired in the current engine.
 
 Output prints `AGENTGOV_FQDN` and `AGENTGOV_URL`; the MCP endpoint is `${AGENTGOV_URL}/mcp`.
 
@@ -244,7 +310,7 @@ Every env var the engine reads, with default and whether it is safe to omit.
 
 | Variable | Default | Safe to omit? | Purpose |
 |---|---|---|---|
-| `PORT` | `3000` | yes | HTTP port for the MCP + health + revoke server. Set to `8080` for Container Apps. |
+| `PORT` | `3000` | yes | HTTP port for the MCP + health + revoke server. The Dockerfile and Container Apps Bicep both use 3000 — override only when an existing service on the host already binds that port. |
 | `AGENTGOV_MCP_TOKEN` | _(none)_ | **no for production** | Bearer token clients must send as `x-agentgov-mcp-token`. Required when `AGENTGOV_ALLOW_ANY_ORIGIN=true`. |
 | `AGENTGOV_REVOKE_TOKEN` | _(none)_ | **no for production** | Bearer token clients must send as `x-agentgov-revoke-token` on `POST /releases/{id}/revoke`. |
 | `AGENTGOV_ALLOW_ANY_ORIGIN` | `false` | yes | Set to `true` to disable origin pinning. **Only safe when `AGENTGOV_MCP_TOKEN` is also set**; the engine refuses to start otherwise. |
@@ -252,7 +318,7 @@ Every env var the engine reads, with default and whether it is safe to omit.
 | `AGENTGOV_ALLOW_LOOPBACK_REVOKE` | `false` | yes | Set to `true` to allow `POST /releases/{id}/revoke` from `127.0.0.1` / `::1` without a revoke token. Useful for cron-driven revocation on the host. |
 | `AGENTGOV_WORKSPACE_ROOT` | `process.cwd()` | yes | Workspace root used by path-resolution guard. Set when AgentGov runs from a different directory than the policy/target-agent files. |
 | `AGENTGOV_DB` | `outputs/agentgov.db` | yes | SQLite file path for the decision table. Parent directory must be writable. |
-| `AGENTGOV_HMAC_SECRET` | _(insecure default)_ | **no for production** | HMAC signing secret for `TrustVerdict` and `ReleaseDecision`. Rotate by re-issuing decisions. |
-| `AGENTGOV_OTEL_FILE` | `outputs/otel-spans.jsonl` | yes | JSONL file the gate emits spans into. (Currently the Trust Gate emits; the Release Gate path is pending.) |
+| `AGENTGOV_HMAC_SECRET` | _(insecure default)_ | **no for production** | HMAC signing secret for `TrustVerdict` and `ReleaseDecision`. **Rotating this invalidates every previously-signed decision** — `agentgov signature verify` returns false on rows written under the old secret. Either keep the old secret reachable for retroactive verification or re-issue all decisions under the new one. Never generate inline with `$(openssl rand)` at startup if SQLite is persistent. |
+| `AGENTGOV_OTEL_FILE` | `outputs/otel-spans.jsonl` | yes | JSONL file the gates emit spans into. Both Trust Gate (`agentgov.trust.verdict`) and Release Gate (`agentgov.release.verdict`) write here. See `docs/observability.md` for the attribute schema. |
 
 Set them inline (`VAR=value npm run mcp:start`), via a `.env`-style loader of your choice, or via `azd env set VAR value` for Container Apps.

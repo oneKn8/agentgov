@@ -14,18 +14,14 @@ hooks:
   predeploy:
     shell: sh
     run: |
-      # Pass if either path can produce a container:
-      #   (a) AGENTGOV_CONTAINER_IMAGE points at a prebuilt image, or
-      #   (b) a Dockerfile is present for azd to build locally.
-      if [ -n "${AGENTGOV_CONTAINER_IMAGE:-}" ]; then
-        echo "AgentGov predeploy: using prebuilt image AGENTGOV_CONTAINER_IMAGE=${AGENTGOV_CONTAINER_IMAGE}"
-        exit 0
+      # The repo ships a Dockerfile at the root; azd builds it remotely thanks
+      # to docker.remoteBuild above and sets SERVICE_API_IMAGE_NAME, which
+      # infra/main.parameters.json substitutes into the containerImage Bicep
+      # param. Operators with a pre-built image override via
+      # `azd env set SERVICE_API_IMAGE_NAME <ref>` before `azd up`.
+      if [ ! -f Dockerfile ]; then
+        echo "::error::Cannot deploy: Dockerfile is missing from the repo root."
+        echo "azd up needs the Dockerfile to remote-build the image."
+        exit 1
       fi
-      if [ -f Dockerfile ]; then
-        echo "AgentGov predeploy: Dockerfile found, azd will build locally."
-        exit 0
-      fi
-      echo "::error::Cannot deploy: no Dockerfile and AGENTGOV_CONTAINER_IMAGE is unset."
-      echo "Either commit a Dockerfile (Codex owns this on codex/core-engine)"
-      echo "or set AGENTGOV_CONTAINER_IMAGE to a prebuilt image reference before azd up."
-      exit 1
+      echo "AgentGov predeploy: Dockerfile present, azd will build, push, and set SERVICE_API_IMAGE_NAME."
