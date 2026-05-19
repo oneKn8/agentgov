@@ -55,7 +55,7 @@ Release verdicts emit the same base attributes plus the metrics the classifier a
     "agentgov.agent_id": "vendor-exception-agent-v1",
     "agentgov.verdict": "BLOCK",
     "agentgov.latency_ms": 7,
-    "agentgov.failure_categories": ["evidence", "policy", "tool_call", "quality", "safety"],
+    "agentgov.failure_categories": ["policy", "tool_call", "quality", "evidence", "safety"],
     "agentgov.policy_version": "policies/vendor-exception.yaml",
     "agentgov.pass_rate": 62,
     "agentgov.critical_failures": 7,
@@ -98,7 +98,7 @@ The span attribute `agentgov.agent_id` carries:
 - **Trust spans:** the agent **name** (e.g. `"Trusted Invoice Helper"`) because `SqliteStorage.saveTrustVerdict` keys the audit row on `verdict.agent_name`. `TrustVerdict` has no stable `agent_id` field on it today.
 - **Release spans:** the stable agent **id** (e.g. `"vendor-exception-agent-v1"`) because `SqliteStorage.saveReleaseDecision` keys on `decision.agent_id`.
 
-This is engine-consistent with the storage layer's keying (the viewer's join logic at `docs/viewer/scripts/export-verdicts.mjs` depends on it) but a dashboard query like `GROUP BY agentgov.agent_id` will mix human display names from Trust with stable IDs from Release. If you build cross-gate aggregations, partition by `name` (`agentgov.trust.verdict` vs `agentgov.release.verdict`) first, then group within each. A future engine change adding a stable `agent_id` to `TrustVerdict` would let this unify; until then, partition.
+This is engine-consistent with the storage layer's keying (the viewer's join logic at `scripts/export-verdicts.mjs` depends on it) but a dashboard query like `GROUP BY agentgov.agent_id` will mix human display names from Trust with stable IDs from Release. If you build cross-gate aggregations, partition by `name` (`agentgov.trust.verdict` vs `agentgov.release.verdict`) first, then group within each. A future engine change adding a stable `agent_id` to `TrustVerdict` would let this unify; until then, partition.
 
 ### Default sink
 
