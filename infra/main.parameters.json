@@ -12,7 +12,7 @@
       "value": "${AGENTGOV_TIER=free}"
     },
     "containerImage": {
-      "value": "${AGENTGOV_CONTAINER_IMAGE=mcr.microsoft.com/azuredocs/containerapps-helloworld:latest}"
+      "value": "${AGENTGOV_CONTAINER_IMAGE}"
     },
     "revokeToken": {
       "value": "${AGENTGOV_REVOKE_TOKEN=}"

@@ -163,11 +163,12 @@ npm run mcp:start
 # AgentGov MCP listening at http://localhost:3000/mcp (Streamable HTTP)
 ```
 
-Or run the same server in a container (non-root, persistent SQLite under `/data`):
+Or run the same server in a container (non-root, persistent SQLite under `/data` via named volume):
 
 ```bash
 docker build -t agentgov:local .
-docker run --rm -p 3000:3000 -v "$(pwd)/agentgov-data:/data" \
+docker volume create agentgov-data
+docker run --rm -p 3000:3000 -v agentgov-data:/data \
   -e AGENTGOV_HMAC_SECRET="$(openssl rand -hex 32)" \
   -e AGENTGOV_MCP_TOKEN="$(openssl rand -hex 32)" \
   agentgov:local
@@ -201,7 +202,7 @@ Trust lifecycle: [`docs/architecture-trust.svg`](docs/architecture-trust.svg) ·
 | **Signed decisions** | HMAC-SHA-256 over RFC 8785 (JCS) canonical payload. Independently verifiable via `agentgov signature verify`. |
 | **Threat model** | Full STRIDE coverage in [`docs/threat-model.md`](docs/threat-model.md) — poisoned cards, prompt injection, replay, tamper, downgrade, impersonation. |
 | **Cost model** | [`docs/cost-model.md`](docs/cost-model.md) — **$0/month free tier validated**. No paid LLM calls in the core decision path. |
-| **Observability** | OpenTelemetry [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) spans on every Trust Gate verdict today; Release Gate spans on the [roadmap](docs/observability.md#roadmap). |
+| **Observability** | OpenTelemetry [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) spans on every Trust and Release Gate verdict. [`docs/observability.md`](docs/observability.md). |
 | **Data minimization** | No raw sensitive payloads in audit logs. Evidence referenced by ID. Redaction at the persistence boundary. [`docs/data-minimization.md`](docs/data-minimization.md). |
 | **Regression detection** | Each release compared against last 5 runs. Pass-rate drop ≥5pp or new failure category → `WARN`. |
 | **Idempotency + revocation** | Same `release_id` → same record. `POST /releases/{id}/revoke` appends audit row without rewriting history. |

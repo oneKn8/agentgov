@@ -30,27 +30,27 @@ devtunnel host -p 3000 --allow-anonymous
 
 ### Local (Docker) — fastest reproducible demo
 
-The repo ships a multi-stage `Dockerfile` at the root (Node 22 → distroless-style runtime, non-root `agentgov` user, `/data` writable for SQLite, `HEALTHCHECK` against `/healthz`).
+The repo ships a multi-stage `Dockerfile` at the root: build stage compiles TypeScript, runtime stage is `node:22-bookworm-slim` (small but not distroless — `apt`, shell, and glibc are present, which keeps the `HEALTHCHECK` `node -e fetch(...)` pattern viable). Runs as a non-root `agentgov` user, `/data` writable for SQLite, `HEALTHCHECK` against `/healthz`.
 
 ```bash
 # Build the image (~1-2 min cold, <10s warm)
 docker build -t agentgov:local .
 
-# Run with persistent SQLite + the production token gates set
-mkdir -p $(pwd)/agentgov-data
+# Run with a named volume for persistent SQLite + production token gates
+docker volume create agentgov-data
 docker run --rm -p 3000:3000 \
-  -v "$(pwd)/agentgov-data:/data" \
+  -v agentgov-data:/data \
   -e AGENTGOV_HMAC_SECRET="$(openssl rand -hex 32)" \
   -e AGENTGOV_MCP_TOKEN="$(openssl rand -hex 32)" \
   -e AGENTGOV_REVOKE_TOKEN="$(openssl rand -hex 32)" \
   agentgov:local
-# Listening at http://localhost:3000, SQLite at $(pwd)/agentgov-data/agentgov.db
+# Listening at http://localhost:3000, SQLite at /data/agentgov.db inside the volume
 
 # Expose via devtunnel (in a separate terminal)
 devtunnel host -p 3000 --allow-anonymous
 ```
 
-> **Volume permissions.** The container runs as a non-root `agentgov` user (uid/gid created during the image build). If your host's mounted `agentgov-data/` is owned by a different uid, the container will fail to write. Either `sudo chown -R 1000:1000 agentgov-data/` (the agentgov uid baked into the image), or omit the volume mount and let SQLite live inside the ephemeral container for the duration of the demo.
+> **Why a named volume, not a bind mount.** The container runs as a non-root `agentgov` user created with `useradd --system`, so the UID is allocated from the system range (typically 100–999 on Debian/`bookworm-slim`) — it is **not** guaranteed to be `1000`. A named Docker volume inherits the container's uid/gid automatically and avoids the host/container UID mismatch entirely. If you must bind-mount a host directory (e.g. for inspecting `agentgov.db` from the host), inspect the uid first with `docker run --rm agentgov:local id agentgov` and `chown` to whatever it prints, or run the container as the host user with `--user "$(id -u):$(id -g)"`.
 
 > **Fixtures baked in.** The image includes `fixtures/`, `policies/`, and `target-agents/` so all CLI/MCP demo paths work out of the box without bind-mounting the repo. This includes `fixtures/agent-cards/poisoned-injection.json`, which is intentional test content but contains prompt-injection strings; treat the image as a demo artifact, not a production base layer to inherit from.
 
@@ -69,16 +69,25 @@ See **Step 2 — Authentication** below for the headers Copilot Studio must send
 
 The repo ships an `azd`-compatible `azure.yaml` plus a Bicep template at `infra/main.bicep` + `infra/workload.bicep`, and a `Dockerfile` at the root. `azd up` builds the Dockerfile remotely (via `docker.remoteBuild: true` in `azure.yaml`), pushes it to an azd-managed Azure Container Registry, and binds the resulting image to the Container App.
 
+The Bicep template requires a non-empty `containerImage` parameter (`@minLength(1)` — no default), and `infra/main.parameters.json` substitutes the value from `AGENTGOV_CONTAINER_IMAGE`. **Set that env var before `azd up`** or provision will fail-fast with a clear Bicep validation error. The first run usually points it at a hand-built image; subsequent `azd deploy` calls rebuild and push to the same tag.
+
 ```bash
 azd auth login
 azd init                          # accept defaults; name agentgov
 azd env set AGENTGOV_TIER paid    # 'free' = scale-to-zero, no observability; 'paid' = min=1 + Log Analytics + App Insights
 azd env set AGENTGOV_MCP_TOKEN "$(openssl rand -hex 32)"
 azd env set AGENTGOV_REVOKE_TOKEN "$(openssl rand -hex 32)"
+
+# Required: a pre-built image reference. Either build and push your own:
+#   docker build -t myacr.azurecr.io/agentgov:0.1.0 .
+#   docker push myacr.azurecr.io/agentgov:0.1.0
+# …or point at a tag your CI already publishes (e.g. GHCR).
+azd env set AGENTGOV_CONTAINER_IMAGE myacr.azurecr.io/agentgov:0.1.0
+
 azd up                            # pick subscription + region (eastus or westus2)
 ```
 
-Optional: skip the remote build by setting `AGENTGOV_CONTAINER_IMAGE` to a tag you've pushed elsewhere (e.g. a GitHub Actions build into GHCR). The predeploy hook honors that override and azd binds the running container to it.
+This intentionally removes the previous hello-world default. A direct `az deployment` against the Bicep without a `containerImage` would have provisioned a healthy-looking `mcr.microsoft.com/azuredocs/containerapps-helloworld:latest` on the production FQDN, which is exactly the silent-wrong-container failure mode worth refusing.
 
 What `azd up` actually provisions (per `infra/workload.bicep`):
 
