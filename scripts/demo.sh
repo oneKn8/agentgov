@@ -17,6 +17,12 @@ set -euo pipefail
 PACE="${DEMO_PACE:-3}"
 FRESH="${DEMO_FRESH:-0}"
 
+# Node 22 still ships node:sqlite as experimental, so every CLI invocation
+# that touches SqliteStorage prints "(node:NNN) ExperimentalWarning: ..."
+# to stderr. That noise lands in the screen capture. Disable warnings for
+# the duration of the demo run only — callers' shells are unaffected.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --no-warnings"
+
 # ANSI styling — visible enough for OBS capture without being noisy.
 BOLD=$(printf '\033[1m')
 DIM=$(printf '\033[2m')
@@ -101,7 +107,7 @@ fi
 pause
 
 # ─────────────────────────────────────────────────────────────────────
-banner "ACT 3 — Revoke a release post-deployment (immutable audit row)"
+banner "ACT 3 — Revoke a release post-deployment (verdict intact, revoke metadata recorded)"
 # ─────────────────────────────────────────────────────────────────────
 
 # Pull the most-recent release_id from SQLite so this works on any run.
@@ -160,7 +166,7 @@ banner "Demo complete — captured artifacts under outputs/"
 # ─────────────────────────────────────────────────────────────────────
 
 step "Audit trail"
-printf '  • %soutputs/agentgov.db%s — SQLite decision table (every verdict, idempotent, immutable revoke rows)\n' "$BOLD" "$RESET"
+printf '  • %soutputs/agentgov.db%s — SQLite decision table (every verdict signed and idempotent; revoke writes only the revoked_at / revoked_by / revoke_reason columns, payload_json + signature stay intact)\n' "$BOLD" "$RESET"
 printf '  • %soutputs/otel-spans.jsonl%s — OpenTelemetry GenAI spans (Trust + Release)\n' "$BOLD" "$RESET"
 printf '  • %soutputs/release-packet.md%s — signed Markdown packet for the agent owner\n' "$BOLD" "$RESET"
 printf '  • %sdocs/viewer/verdicts.json%s — viewer data file (regenerated above)\n' "$BOLD" "$RESET"

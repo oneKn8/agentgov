@@ -69,7 +69,7 @@ agentgov release check target-agents/vendor-exception.yaml \
 agentgov release revoke <release_id> --reason "post-release regression"
 ```
 
-> "Post-release regression detected. One CLI call appends an immutable audit row, signature intact. Every decision is browsable in the local viewer — signed, verifiable, exportable as a JSON dump."
+> "Post-release regression detected. One CLI call records the revoke — the original verdict and its signature aren't touched. Every decision is browsable in the local viewer: signed, verifiable, exportable as JSON."
 
 ### 1:08–1:20 — ACT 4: How it fits the Microsoft stack
 
