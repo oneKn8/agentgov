@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AgentGov — Verdict Inspector</title>
+    <meta name="description" content="Local audit viewer for AgentGov Trust and Release Gate decisions." />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: oklch(18% 0.02 250);
+        --bg-elev: oklch(22% 0.025 250);
+        --bg-row: oklch(24% 0.03 250);
+        --bg-row-hover: oklch(28% 0.04 250);
+        --line: oklch(32% 0.04 250);
+        --line-soft: oklch(28% 0.03 250);
+        --text: oklch(94% 0.02 250);
+        --text-dim: oklch(70% 0.03 250);
+        --text-faint: oklch(52% 0.03 250);
+        --accent: oklch(80% 0.12 195);
+        --signal-allow: oklch(78% 0.15 152);
+        --signal-block: oklch(72% 0.18 25);
+        --signal-review: oklch(82% 0.14 78);
+        --signal-revoked: oklch(60% 0.04 250);
+        --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+        --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.5;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+
+      .frame {
+        display: grid;
+        grid-template-rows: auto auto 1fr;
+        height: 100vh;
+      }
+
+      header.top {
+        display: flex;
+        align-items: baseline;
+        gap: 24px;
+        padding: 18px 24px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      header.top .brand {
+        font-family: var(--mono);
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        font-size: 13px;
+      }
+      header.top .brand .dot {
+        display: inline-block;
+        width: 7px;
+        height: 7px;
+        background: var(--accent);
+        border-radius: 50%;
+        margin-right: 8px;
+        transform: translateY(-1px);
+      }
+      header.top .sub {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+      }
+      header.top .meta {
+        margin-left: auto;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 1px;
+        background: var(--line-soft);
+        border-bottom: 1px solid var(--line);
+      }
+      .stats .cell {
+        background: var(--bg);
+        padding: 14px 20px;
+      }
+      .stats .label {
+        font-family: var(--mono);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-faint);
+        margin-bottom: 4px;
+      }
+      .stats .value {
+        font-family: var(--mono);
+        font-size: 20px;
+        font-weight: 500;
+      }
+      .stats .value.allow { color: var(--signal-allow); }
+      .stats .value.block { color: var(--signal-block); }
+      .stats .value.revoked { color: var(--signal-revoked); }
+
+      .body {
+        display: grid;
+        grid-template-columns: minmax(380px, 38%) 1fr;
+        overflow: hidden;
+      }
+
+      .pane-list {
+        border-right: 1px solid var(--line);
+        display: grid;
+        grid-template-rows: auto 1fr;
+        overflow: hidden;
+      }
+
+      .filterbar {
+        display: flex;
+        gap: 8px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line-soft);
+        background: var(--bg-elev);
+      }
+      .filterbar input, .filterbar select {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 6px 10px;
+        font-family: var(--mono);
+        font-size: 12px;
+        outline: none;
+      }
+      .filterbar input { flex: 1; min-width: 0; }
+      .filterbar input:focus, .filterbar select:focus { border-color: var(--accent); }
+
+      .list {
+        overflow-y: auto;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 80px 1fr auto;
+        gap: 12px;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--line-soft);
+        cursor: pointer;
+      }
+      .row:hover { background: var(--bg-row-hover); }
+      .row.active { background: var(--bg-row); border-left: 2px solid var(--accent); padding-left: 14px; }
+      .row .kind {
+        font-family: var(--mono);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-faint);
+      }
+      .row .subject {
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .row .subject .id {
+        display: block;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .badge {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        padding: 3px 8px;
+        border-radius: 2px;
+        text-transform: uppercase;
+      }
+      .badge.ALLOW, .badge.PASS { background: color-mix(in oklch, var(--signal-allow) 18%, transparent); color: var(--signal-allow); }
+      .badge.ALLOW_SANITIZED { background: color-mix(in oklch, var(--signal-allow) 18%, transparent); color: var(--signal-allow); }
+      .badge.BLOCK { background: color-mix(in oklch, var(--signal-block) 18%, transparent); color: var(--signal-block); }
+      .badge.REVIEW, .badge.WARN { background: color-mix(in oklch, var(--signal-review) 18%, transparent); color: var(--signal-review); }
+      .badge.revoked { background: color-mix(in oklch, var(--signal-revoked) 18%, transparent); color: var(--signal-revoked); margin-left: 6px; }
+
+      .pane-detail {
+        overflow-y: auto;
+        padding: 28px 32px 60px;
+      }
+      .pane-detail.empty {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-faint);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .detail-head {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 8px;
+      }
+      .detail-head h1 {
+        margin: 0;
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .detail-sub {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+        margin-bottom: 28px;
+      }
+      .detail-sub .sep { margin: 0 8px; color: var(--line); }
+
+      .section {
+        margin-bottom: 28px;
+      }
+      .section h2 {
+        font-family: var(--mono);
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--text-dim);
+        margin: 0 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+
+      .kv {
+        display: grid;
+        grid-template-columns: 180px 1fr;
+        gap: 6px 16px;
+        font-size: 13px;
+      }
+      .kv dt {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+      }
+      .kv dd {
+        margin: 0;
+        font-family: var(--mono);
+        font-size: 12px;
+        word-break: break-all;
+      }
+
+      ul.reasons, ul.fixes {
+        margin: 0;
+        padding-left: 18px;
+      }
+      ul.reasons li, ul.fixes li {
+        margin: 4px 0;
+        font-size: 13px;
+      }
+
+      .findings {
+        display: grid;
+        gap: 8px;
+      }
+      .finding {
+        background: var(--bg-elev);
+        border-left: 2px solid var(--signal-block);
+        padding: 10px 14px;
+        border-radius: 0 4px 4px 0;
+      }
+      .finding.severity-low { border-left-color: var(--signal-review); }
+      .finding.severity-info { border-left-color: var(--text-faint); }
+      .finding .row1 {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 4px;
+      }
+      .finding .row1 .fid {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+      }
+      .finding .row1 .sev {
+        font-family: var(--mono);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--text-dim);
+      }
+      .finding .msg { font-size: 13px; }
+      .finding .ev {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+        margin-top: 4px;
+        word-break: break-all;
+      }
+
+      details.raw {
+        margin-top: 8px;
+      }
+      details.raw summary {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+        cursor: pointer;
+        padding: 6px 0;
+      }
+      details.raw summary:hover { color: var(--text); }
+      pre.json {
+        background: var(--bg-elev);
+        border: 1px solid var(--line-soft);
+        border-radius: 4px;
+        padding: 14px 16px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.55;
+        overflow-x: auto;
+        margin: 6px 0 0;
+        color: var(--text-dim);
+      }
+
+      .revoke-banner {
+        background: color-mix(in oklch, var(--signal-revoked) 14%, transparent);
+        border: 1px solid color-mix(in oklch, var(--signal-revoked) 40%, transparent);
+        border-radius: 4px;
+        padding: 12px 14px;
+        font-size: 13px;
+        margin-bottom: 18px;
+      }
+      .revoke-banner .label {
+        font-family: var(--mono);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--signal-revoked);
+        margin-bottom: 4px;
+      }
+
+      .span-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--text-faint);
+        margin-top: 8px;
+      }
+      .span-pill::before {
+        content: "";
+        display: inline-block;
+        width: 6px;
+        height: 6px;
+        background: var(--accent);
+        border-radius: 50%;
+      }
+
+      .empty-list {
+        padding: 40px 16px;
+        text-align: center;
+        color: var(--text-faint);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      @media (max-width: 880px) {
+        .body { grid-template-columns: 1fr; }
+        .stats { grid-template-columns: repeat(3, 1fr); }
+        .pane-list { border-right: none; border-bottom: 1px solid var(--line); max-height: 40vh; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <header class="top">
+        <div class="brand"><span class="dot"></span>AgentGov / verdict-inspector</div>
+        <div class="sub">trust + release gate audit viewer</div>
+        <div class="meta" id="export-meta">loading&hellip;</div>
+      </header>
+
+      <div class="stats" id="stats"></div>
+
+      <div class="body">
+        <section class="pane-list">
+          <div class="filterbar">
+            <input id="q" type="search" placeholder="filter by subject, decision id, verdict&hellip;" autocomplete="off" />
+            <select id="f-kind">
+              <option value="">all kinds</option>
+              <option value="trust">trust</option>
+              <option value="release">release</option>
+            </select>
+            <select id="f-verdict">
+              <option value="">all verdicts</option>
+            </select>
+          </div>
+          <div class="list" id="list"></div>
+        </section>
+
+        <section class="pane-detail empty" id="detail">
+          select a decision on the left
+        </section>
+      </div>
+    </div>
+
+    <script>
+      const fmt = {
+        time(iso) {
+          if (!iso) return "—";
+          try {
+            const d = new Date(iso);
+            return d.toISOString().replace("T", " ").replace(/\.\d+Z$/, "Z");
+          } catch { return iso; }
+        },
+        json(value) {
+          return JSON.stringify(value, null, 2);
+        },
+        escape(s) {
+          return String(s ?? "").replace(/[&<>"]/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+        }
+      };
+
+      let DATA = null;
+      let activeId = null;
+
+      async function load() {
+        try {
+          const res = await fetch("./verdicts.json", { cache: "no-store" });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          DATA = await res.json();
+        } catch (err) {
+          document.getElementById("list").innerHTML =
+            `<div class="empty-list">could not load verdicts.json<br/><br/>run <code>node scripts/export-verdicts.mjs</code> from the repo root</div>`;
+          document.getElementById("export-meta").textContent = "no data";
+          return;
+        }
+        renderStats();
+        populateVerdictFilter();
+        renderList();
+        document.getElementById("export-meta").textContent =
+          `exported ${fmt.time(DATA.generated_at)} · db ${humanBytes(DATA.db_size_bytes)}`;
+      }
+
+      function humanBytes(n) {
+        if (!n) return "—";
+        if (n < 1024) return `${n}B`;
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)}KB`;
+        return `${(n / (1024 * 1024)).toFixed(1)}MB`;
+      }
+
+      function renderStats() {
+        const cells = [
+          { label: "total", value: DATA.total_decisions, cls: "" },
+          { label: "trust", value: DATA.by_kind.trust ?? 0, cls: "" },
+          { label: "release", value: DATA.by_kind.release ?? 0, cls: "" },
+          { label: "allow / pass", value: (DATA.by_verdict.ALLOW ?? 0) + (DATA.by_verdict.PASS ?? 0) + (DATA.by_verdict.ALLOW_SANITIZED ?? 0), cls: "allow" },
+          { label: "block", value: DATA.by_verdict.BLOCK ?? 0, cls: "block" },
+          { label: "revoked", value: DATA.revoked, cls: "revoked" }
+        ];
+        document.getElementById("stats").innerHTML = cells
+          .map((c) => `<div class="cell"><div class="label">${c.label}</div><div class="value ${c.cls}">${c.value}</div></div>`)
+          .join("");
+      }
+
+      function populateVerdictFilter() {
+        const sel = document.getElementById("f-verdict");
+        Object.keys(DATA.by_verdict).sort().forEach((v) => {
+          const opt = document.createElement("option");
+          opt.value = v;
+          opt.textContent = v.toLowerCase();
+          sel.appendChild(opt);
+        });
+      }
+
+      function currentFilters() {
+        return {
+          q: document.getElementById("q").value.trim().toLowerCase(),
+          kind: document.getElementById("f-kind").value,
+          verdict: document.getElementById("f-verdict").value
+        };
+      }
+
+      function filtered() {
+        const f = currentFilters();
+        return DATA.decisions.filter((d) => {
+          if (f.kind && d.kind !== f.kind) return false;
+          if (f.verdict && d.verdict !== f.verdict) return false;
+          if (f.q) {
+            const hay = `${d.subject_id} ${d.decision_id} ${d.verdict} ${d.kind}`.toLowerCase();
+            if (!hay.includes(f.q)) return false;
+          }
+          return true;
+        });
+      }
+
+      function renderList() {
+        const rows = filtered();
+        const list = document.getElementById("list");
+        if (rows.length === 0) {
+          list.innerHTML = `<div class="empty-list">no decisions match the current filter</div>`;
+          return;
+        }
+        list.innerHTML = rows
+          .map((d) => {
+            const active = d.decision_id === activeId ? " active" : "";
+            const revokedBadge = d.revoked_at ? `<span class="badge revoked">revoked</span>` : "";
+            return `
+              <div class="row${active}" data-id="${fmt.escape(d.decision_id)}" role="button" tabindex="0" aria-label="Open decision ${fmt.escape(d.decision_id)}">
+                <div class="kind">${fmt.escape(d.kind)}</div>
+                <div class="subject">
+                  ${fmt.escape(d.subject_id)}
+                  <span class="id">${fmt.escape(d.decision_id)}</span>
+                </div>
+                <div><span class="badge ${fmt.escape(d.verdict)}">${fmt.escape(d.verdict)}</span>${revokedBadge}</div>
+              </div>`;
+          })
+          .join("");
+        list.querySelectorAll(".row").forEach((el) => {
+          el.addEventListener("click", () => selectDecision(el.dataset.id));
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              selectDecision(el.dataset.id);
+            }
+          });
+        });
+      }
+
+      function selectDecision(id) {
+        activeId = id;
+        renderList();
+        const d = DATA.decisions.find((x) => x.decision_id === id);
+        if (!d) return;
+        const detail = document.getElementById("detail");
+        detail.classList.remove("empty");
+
+        const p = d.payload ?? {};
+        const findings = Array.isArray(p.findings) ? p.findings : [];
+        const failures = Array.isArray(p.failures) ? p.failures : [];
+        const reasons = Array.isArray(p.reasons) ? p.reasons : Array.isArray(p.root_causes) ? p.root_causes : [];
+        const fixes = Array.isArray(p.recommended_fixes) ? p.recommended_fixes : [];
+
+        const revokeBlock = d.revoked_at
+          ? `<div class="revoke-banner">
+              <div class="label">revoked</div>
+              <div>${fmt.escape(d.revoke_reason ?? "no reason recorded")} — by <code>${fmt.escape(d.revoked_by ?? "unknown")}</code> at <code>${fmt.time(d.revoked_at)}</code></div>
+            </div>`
+          : "";
+
+        // Values stay as bare text (untrusted — they come from agent-card
+        // metadata an attacker may control). The render loop below escapes
+        // before insertion; "signature" gets the <code> wrapper post-escape.
+        const corePairs = [
+          ["decision_id", d.decision_id],
+          ["kind", d.kind],
+          ["subject", d.subject_id],
+          ["verdict", d.verdict],
+          ["created_at", fmt.time(d.created_at)],
+          ["idempotency_key", d.idempotency_key],
+          ["policy_version", p.policy_version ?? "—"],
+          ["signature", d.signature ?? "—"]
+        ];
+        function renderCorePair([k, v]) {
+          const safeKey = fmt.escape(k);
+          const safeVal = fmt.escape(String(v ?? "—"));
+          const inner = k === "signature" && v && v !== "—" ? `<code>${safeVal}</code>` : safeVal;
+          return `<dt>${safeKey}</dt><dd>${inner}</dd>`;
+        }
+
+        const releaseStats = d.kind === "release"
+          ? [
+              ["pass_rate", p.pass_rate != null ? `${p.pass_rate}%` : "—"],
+              ["critical_failures", p.critical_failures ?? 0],
+              ["tool_call_failures", p.tool_call_failures ?? 0],
+              ["policy_failures", p.policy_failures ?? 0],
+              ["pass_rate_delta_pp", p.regression?.pass_rate_delta_pp != null ? `${p.regression.pass_rate_delta_pp}pp` : "—"]
+            ]
+          : [];
+
+        const trustStats = d.kind === "trust"
+          ? [
+              ["risk_score", p.risk_score ?? "—"],
+              ["registry_match", p.registry_match != null ? String(p.registry_match) : "—"],
+              ["signature_valid", p.signature_valid != null ? String(p.signature_valid) : "—"],
+              ["source", p.source ?? "—"]
+            ]
+          : [];
+
+        const span = d.span;
+        const spanBlock = span
+          ? `<div class="section">
+              <h2>linked otel span</h2>
+              <dl class="kv">
+                <dt>name</dt><dd>${fmt.escape(span.name)}</dd>
+                <dt>trace_id</dt><dd>${fmt.escape(span.trace_id)}</dd>
+                <dt>timestamp</dt><dd>${fmt.time(span.timestamp)}</dd>
+                <dt>latency_ms</dt><dd>${fmt.escape(span.attributes?.["agentgov.latency_ms"] ?? "—")}</dd>
+                <dt>failure_categories</dt><dd>${fmt.escape((span.attributes?.["agentgov.failure_categories"] ?? []).join(", ") || "—")}</dd>
+              </dl>
+            </div>`
+          : `<div class="section"><h2>linked otel span</h2><div style="color:var(--text-faint);font-family:var(--mono);font-size:12px">no matching span in outputs/otel-spans.jsonl — release-gate emission is on the roadmap</div></div>`;
+
+        detail.innerHTML = `
+          <div class="detail-head">
+            <h1>${fmt.escape(d.subject_id)}</h1>
+            <span class="badge ${fmt.escape(d.verdict)}">${fmt.escape(d.verdict)}</span>
+            ${d.revoked_at ? `<span class="badge revoked">revoked</span>` : ""}
+          </div>
+          <div class="detail-sub">
+            ${fmt.escape(d.kind)} gate <span class="sep">·</span>
+            <code>${fmt.escape(d.decision_id)}</code> <span class="sep">·</span>
+            ${fmt.time(d.created_at)}
+          </div>
+
+          ${revokeBlock}
+
+          <div class="section">
+            <h2>core</h2>
+            <dl class="kv">
+              ${corePairs.map(renderCorePair).join("")}
+            </dl>
+          </div>
+
+          ${trustStats.length ? `<div class="section"><h2>trust metrics</h2><dl class="kv">${trustStats.map(([k, v]) => `<dt>${fmt.escape(k)}</dt><dd>${fmt.escape(String(v))}</dd>`).join("")}</dl></div>` : ""}
+          ${releaseStats.length ? `<div class="section"><h2>release metrics</h2><dl class="kv">${releaseStats.map(([k, v]) => `<dt>${fmt.escape(k)}</dt><dd>${fmt.escape(String(v))}</dd>`).join("")}</dl></div>` : ""}
+
+          ${reasons.length ? `<div class="section"><h2>${d.kind === "release" ? "root causes" : "reasons"}</h2><ul class="reasons">${reasons.map((r) => `<li>${fmt.escape(r)}</li>`).join("")}</ul></div>` : ""}
+          ${fixes.length ? `<div class="section"><h2>recommended fixes</h2><ul class="fixes">${fixes.map((f) => `<li>${fmt.escape(f)}</li>`).join("")}</ul></div>` : ""}
+
+          ${findings.length ? `<div class="section">
+            <h2>findings (${findings.length})</h2>
+            <div class="findings">
+              ${findings.map((f) => `
+                <div class="finding severity-${fmt.escape((f.severity ?? "high").toLowerCase())}">
+                  <div class="row1">
+                    <span class="fid">${fmt.escape(f.id ?? "—")}</span>
+                    <span class="sev">${fmt.escape((f.severity ?? "high").toLowerCase())}</span>
+                  </div>
+                  <div class="msg">${fmt.escape(f.message ?? f.category ?? "—")}</div>
+                  ${f.evidence ? `<div class="ev">${fmt.escape(typeof f.evidence === "string" ? f.evidence : JSON.stringify(f.evidence))}</div>` : ""}
+                </div>`).join("")}
+            </div>
+          </div>` : ""}
+
+          ${failures.length ? `<div class="section">
+            <h2>failures (${failures.length})</h2>
+            <div class="findings">
+              ${failures.map((f) => `
+                <div class="finding severity-${fmt.escape((f.severity ?? "critical").toLowerCase())}">
+                  <div class="row1">
+                    <span class="fid">${fmt.escape(f.id ?? "—")}</span>
+                    <span class="sev">${fmt.escape(f.category ?? "—")}</span>
+                  </div>
+                  <div class="msg">${fmt.escape(f.message ?? "—")}</div>
+                </div>`).join("")}
+            </div>
+          </div>` : ""}
+
+          ${spanBlock}
+
+          <div class="section">
+            <h2>raw payload</h2>
+            <details class="raw">
+              <summary>expand &nbsp;·&nbsp; ${fmt.json(d.payload).length.toLocaleString()} chars</summary>
+              <pre class="json">${fmt.escape(fmt.json(d.payload))}</pre>
+            </details>
+          </div>
+        `;
+      }
+
+      document.getElementById("q").addEventListener("input", renderList);
+      document.getElementById("f-kind").addEventListener("change", renderList);
+      document.getElementById("f-verdict").addEventListener("change", renderList);
+
+      load();
+    </script>
+  </body>
+</html>
