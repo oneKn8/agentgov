@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
@@ -24,11 +24,13 @@ const expectedTools = [
 
 const port = await getAvailablePort();
 const tempDir = mkdtempSync(join(tmpdir(), "agentgov-mcp-smoke-"));
+const otelFile = join(tempDir, "otel-spans.jsonl");
 const server = spawn(process.execPath, ["dist/server.js"], {
   env: {
     ...process.env,
     PORT: String(port),
-    AGENTGOV_DB: join(tempDir, "agentgov.db")
+    AGENTGOV_DB: join(tempDir, "agentgov.db"),
+    AGENTGOV_OTEL_FILE: otelFile
   },
   stdio: ["ignore", "pipe", "pipe"]
 });
@@ -83,6 +85,18 @@ try {
   assert.equal(releasePayload.pass_rate, 62);
   assert.equal(typeof releasePayload.signature, "string");
   assert.ok(releasePayload.signature.length > 32);
+
+  const spans = readJsonLines(otelFile);
+  const trustSpan = spans.find((span) => span.name === "agentgov.trust.verdict");
+  assert.equal(trustSpan?.attributes?.["agentgov.verdict"], "BLOCK");
+
+  const releaseSpan = spans.find((span) => span.name === "agentgov.release.verdict");
+  assert.equal(releaseSpan?.attributes?.["agentgov.verdict"], "BLOCK");
+  assert.equal(releaseSpan?.attributes?.["agentgov.pass_rate"], 62);
+  assert.equal(releaseSpan?.attributes?.["agentgov.critical_failures"], 7);
+  assert.equal(releaseSpan?.attributes?.["agentgov.tool_call_failures"], 3);
+  assert.equal(releaseSpan?.attributes?.["agentgov.policy_failures"], 3);
+  assert.equal(releaseSpan?.attributes?.["agentgov.regression.pass_rate_delta_pp"], 0);
 
   console.log(
     `mcp smoke ok: ${expectedTools.length} tools, trust verdict ${trustPayload.verdict}, release verdict ${releasePayload.verdict}`
@@ -146,6 +160,13 @@ function parseSseJson(text) {
   const dataLine = text.split("\n").find((line) => line.startsWith("data: "));
   if (!dataLine) throw new Error(`No SSE data line found: ${text}`);
   return JSON.parse(dataLine.slice("data: ".length));
+}
+
+function readJsonLines(path) {
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
 function getAvailablePort() {

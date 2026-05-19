@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Server } from "node:http";
@@ -86,10 +86,13 @@ describe("AgentGov HTTP and MCP server", () => {
   let server: Server;
   let baseUrl: string;
   let releaseId: string;
+  let otelFile: string;
 
   beforeAll(async () => {
     const tempDir = mkdtempSync(join(tmpdir(), "agentgov-test-"));
     process.env.AGENTGOV_DB = join(tempDir, "agentgov.db");
+    otelFile = join(tempDir, "otel-spans.jsonl");
+    process.env.AGENTGOV_OTEL_FILE = otelFile;
     process.env.AGENTGOV_REVOKE_TOKEN = "test-token";
     const { createAgentGovServer } = await import("./server.js");
     const { loadAgentProfile } = await import("./lib/loaders.js");
@@ -117,6 +120,7 @@ describe("AgentGov HTTP and MCP server", () => {
 
   afterAll(async () => {
     delete process.env.AGENTGOV_DB;
+    delete process.env.AGENTGOV_OTEL_FILE;
     delete process.env.AGENTGOV_REVOKE_TOKEN;
     await new Promise<void>((resolve) => server.close(() => resolve()));
   });
@@ -215,6 +219,30 @@ describe("AgentGov HTTP and MCP server", () => {
       offline: true
     });
     expect(poisoned.valid).toBe(false);
+  });
+
+  it("classifies release risk and emits a release span over MCP", async () => {
+    const decision = await callTool<ReleaseDecision>("classify_release_risk", {
+      profile_path: "target-agents/vendor-exception.yaml",
+      eval_path: "fixtures/eval-results/block.json"
+    });
+    expect(decision.verdict).toBe("BLOCK");
+    expect(decision.pass_rate).toBe(62);
+    expect(decision.signature).toEqual(expect.any(String));
+
+    const spans = readJsonLines(otelFile);
+    const releaseSpan = spans.find((span) => span.name === "agentgov.release.verdict");
+    expect(releaseSpan).toMatchObject({
+      attributes: {
+        "agentgov.agent_id": "vendor-exception-agent-v1",
+        "agentgov.verdict": "BLOCK",
+        "agentgov.pass_rate": 62,
+        "agentgov.critical_failures": 7,
+        "agentgov.tool_call_failures": 3,
+        "agentgov.policy_failures": 3,
+        "agentgov.regression.pass_rate_delta_pp": 0
+      }
+    });
   });
 
   it("revokes a release through the HTTP API idempotently", async () => {
@@ -316,4 +344,11 @@ function parseSseJson(text: string): unknown {
   const dataLine = text.split("\n").find((line) => line.startsWith("data: "));
   if (!dataLine) throw new Error(`No SSE data line found: ${text}`);
   return JSON.parse(dataLine.slice("data: ".length));
+}
+
+function readJsonLines(path: string): Array<{ name: string; attributes: Record<string, unknown> }> {
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { name: string; attributes: Record<string, unknown> });
 }
