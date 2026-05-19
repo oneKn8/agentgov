@@ -7,12 +7,20 @@
 
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, relative } from "node:path";
 
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 const dbPath = process.env.AGENTGOV_DB ?? resolve(repoRoot, "outputs/agentgov.db");
 const spansPath = process.env.AGENTGOV_OTEL_FILE ?? resolve(repoRoot, "outputs/otel-spans.jsonl");
 const outPath = resolve(repoRoot, "docs/viewer/verdicts.json");
+
+// Convert a resolved path to a repo-relative form for the committable export.
+// Never emit absolute paths — they leak workstation/user identifiers when this
+// file is committed or shared as a demo artifact (caught in PR #10 review).
+function repoRel(p) {
+  const rel = relative(repoRoot, p);
+  return rel.startsWith("..") ? p : rel;
+}
 
 if (!existsSync(dbPath)) {
   console.error(`error: SQLite store not found at ${dbPath}`);
@@ -78,8 +86,8 @@ const decisions = rows.map((row) => {
 
 const summary = {
   generated_at: new Date().toISOString(),
-  source_db: dbPath,
-  source_spans: existsSync(spansPath) ? spansPath : null,
+  source_db: repoRel(dbPath),
+  source_spans: existsSync(spansPath) ? repoRel(spansPath) : null,
   db_size_bytes: statSync(dbPath).size,
   total_decisions: decisions.length,
   by_kind: countBy(decisions, (d) => d.kind),

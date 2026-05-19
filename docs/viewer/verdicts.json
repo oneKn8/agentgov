@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-19T00:48:27.934Z",
-  "source_db": "/home/oneknight/projects/hackathon/agentgov/outputs/agentgov.db",
-  "source_spans": "/home/oneknight/projects/hackathon/agentgov/outputs/otel-spans.jsonl",
+  "generated_at": "2026-05-19T01:30:09.913Z",
+  "source_db": "outputs/agentgov.db",
+  "source_spans": "outputs/otel-spans.jsonl",
   "db_size_bytes": 45056,
   "total_decisions": 13,
   "by_kind": {

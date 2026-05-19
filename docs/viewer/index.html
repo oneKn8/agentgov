@@ -519,7 +519,7 @@
             const active = d.decision_id === activeId ? " active" : "";
             const revokedBadge = d.revoked_at ? `<span class="badge revoked">revoked</span>` : "";
             return `
-              <div class="row${active}" data-id="${fmt.escape(d.decision_id)}">
+              <div class="row${active}" data-id="${fmt.escape(d.decision_id)}" role="button" tabindex="0" aria-label="Open decision ${fmt.escape(d.decision_id)}">
                 <div class="kind">${fmt.escape(d.kind)}</div>
                 <div class="subject">
                   ${fmt.escape(d.subject_id)}
@@ -531,6 +531,12 @@
           .join("");
         list.querySelectorAll(".row").forEach((el) => {
           el.addEventListener("click", () => selectDecision(el.dataset.id));
+          el.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              selectDecision(el.dataset.id);
+            }
+          });
         });
       }
 
@@ -555,6 +561,9 @@
             </div>`
           : "";
 
+        // Values stay as bare text (untrusted — they come from agent-card
+        // metadata an attacker may control). The render loop below escapes
+        // before insertion; "signature" gets the <code> wrapper post-escape.
         const corePairs = [
           ["decision_id", d.decision_id],
           ["kind", d.kind],
@@ -563,16 +572,22 @@
           ["created_at", fmt.time(d.created_at)],
           ["idempotency_key", d.idempotency_key],
           ["policy_version", p.policy_version ?? "—"],
-          ["signature", d.signature ? `<code>${fmt.escape(d.signature)}</code>` : "—"]
+          ["signature", d.signature ?? "—"]
         ];
+        function renderCorePair([k, v]) {
+          const safeKey = fmt.escape(k);
+          const safeVal = fmt.escape(String(v ?? "—"));
+          const inner = k === "signature" && v && v !== "—" ? `<code>${safeVal}</code>` : safeVal;
+          return `<dt>${safeKey}</dt><dd>${inner}</dd>`;
+        }
 
         const releaseStats = d.kind === "release"
           ? [
               ["pass_rate", p.pass_rate != null ? `${p.pass_rate}%` : "—"],
-              ["risk_score", p.risk_score ?? "—"],
               ["critical_failures", p.critical_failures ?? 0],
               ["tool_call_failures", p.tool_call_failures ?? 0],
-              ["policy_failures", p.policy_failures ?? 0]
+              ["policy_failures", p.policy_failures ?? 0],
+              ["pass_rate_delta_pp", p.regression?.pass_rate_delta_pp != null ? `${p.regression.pass_rate_delta_pp}pp` : "—"]
             ]
           : [];
 
@@ -616,7 +631,7 @@
           <div class="section">
             <h2>core</h2>
             <dl class="kv">
-              ${corePairs.map(([k, v]) => `<dt>${fmt.escape(k)}</dt><dd>${v ?? "—"}</dd>`).join("")}
+              ${corePairs.map(renderCorePair).join("")}
             </dl>
           </div>
 

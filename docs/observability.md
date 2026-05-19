@@ -1,6 +1,6 @@
 # AgentGov Observability
 
-AgentGov emits structured telemetry for every gate decision so that Centers of Excellence can monitor governance activity, build dashboards, and correlate decisions with downstream runtime audit events.
+AgentGov is designed to emit structured telemetry for every gate decision so that Centers of Excellence can monitor governance activity, build dashboards, and correlate decisions with downstream runtime audit events. **Today the Trust Gate emits; Release Gate emission is on the [roadmap](#roadmap).** The emission-scope table below is authoritative.
 
 This document is split into **what ships today** (verified against the engine at `src/gate/otel.ts`) and **what's on the roadmap** (planned, not wired). Anything not labelled "planned" is exercised by the smoke tests and the JSONL fixture at `outputs/otel-spans.jsonl`.
 
@@ -78,14 +78,14 @@ The sections below describe planned observability features. They are written to 
 
 ### Release Gate spans (planned)
 
-Once `src/tools/release/issueReleaseDecision.ts` (and related tools) calls `emitGateSpan`, Release decisions will emit `agentgov.release.verdict` with the same base attributes plus:
+Once the release verdict tool calls `emitGateSpan`, Release decisions will emit `agentgov.release.verdict` with the same base attributes plus the fields the engine already computes on `ReleaseDecision` (see `src/schema/types.ts`):
 
-- `agentgov.risk_score` — 0–100 from `classify_release_risk`
 - `agentgov.pass_rate` — percentage from `ingest_eval_results`
-- `agentgov.critical_failures`, `agentgov.tool_call_failures`, `agentgov.policy_failures` — counts
-- `agentgov.regression.pass_rate_delta_pp` — comparison vs prior release on the same agent
-- `agentgov.regression.new_failure_categories` — string array
-- `agentgov.signature_valid`, `agentgov.registry_match` — booleans
+- `agentgov.critical_failures`, `agentgov.tool_call_failures`, `agentgov.policy_failures` — counts emitted by `src/gate/classifier.ts`
+- `agentgov.regression.pass_rate_delta_pp` — comparison vs prior release on the same agent (already on `ReleaseDecision.regression`)
+- `agentgov.regression.new_failure_categories` — string array (same source)
+
+Two attributes named in earlier drafts of this doc — `agentgov.risk_score` for Release and `agentgov.signature_valid` / `agentgov.registry_match` — are intentionally **not** in the list above. The release classifier does not produce a numeric risk score, and signature/registry booleans are Trust-side concepts. If Release Gate later adopts a unified risk score, that is a deliberate engine change, not a derivation from today's `classifier.ts`.
 
 Tracking issue: open one before claiming pillar #8 in the README.
 
