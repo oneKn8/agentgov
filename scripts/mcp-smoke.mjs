@@ -59,7 +59,7 @@ try {
 
   const toolsPayload = await mcp(baseUrl, "tools/list", {});
   const toolNames = toolsPayload.result.tools.map((tool) => tool.name);
-  assert.deepEqual(toolNames, expectedTools);
+  assert.deepEqual([...toolNames].sort(), [...expectedTools].sort());
 
   const signaturePayload = await callTool(baseUrl, "verify_card_signature", {
     source: "fixtures/agent-cards/trusted-signed.json",
@@ -75,7 +75,18 @@ try {
   assert.equal(typeof trustPayload.signature, "string");
   assert.ok(trustPayload.signature.length > 32);
 
-  console.log(`mcp smoke ok: ${expectedTools.length} tools, trust verdict ${trustPayload.verdict}`);
+  const releasePayload = await callTool(baseUrl, "classify_release_risk", {
+    profile_path: "target-agents/vendor-exception.yaml",
+    eval_path: "fixtures/eval-results/block.json"
+  });
+  assert.equal(releasePayload.verdict, "BLOCK");
+  assert.equal(releasePayload.pass_rate, 62);
+  assert.equal(typeof releasePayload.signature, "string");
+  assert.ok(releasePayload.signature.length > 32);
+
+  console.log(
+    `mcp smoke ok: ${expectedTools.length} tools, trust verdict ${trustPayload.verdict}, release verdict ${releasePayload.verdict}`
+  );
 } finally {
   await stopServer();
 }
