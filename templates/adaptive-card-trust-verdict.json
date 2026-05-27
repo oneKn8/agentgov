@@ -1,0 +1,182 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "$comment": "AgentGov Trust Gate verdict -> Teams Adaptive Card. Bind via Power Automate with $data = TrustVerdict JSON. Use when a Copilot Studio agent attempts to delegate to an external A2A agent and AgentGov returns REVIEW; the human approver gets context to allow/block.",
+  "speak": "AgentGov trust verdict: ${verdict} for ${agent_name}",
+  "body": [
+    {
+      "type": "Container",
+      "style": "${if(verdict == 'BLOCK', 'attention', if(verdict == 'REVIEW', 'warning', 'good'))}",
+      "bleed": true,
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "AGENTGOV",
+                  "weight": "Bolder",
+                  "size": "Small",
+                  "color": "Light",
+                  "spacing": "None"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "Trust Gate",
+                  "isSubtle": true,
+                  "size": "Small",
+                  "spacing": "None"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "${verdict}",
+                  "weight": "Bolder",
+                  "size": "ExtraLarge",
+                  "horizontalAlignment": "Right",
+                  "spacing": "None"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "risk ${risk_score} / 100",
+                  "isSubtle": true,
+                  "size": "Small",
+                  "horizontalAlignment": "Right",
+                  "spacing": "None"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "${agent_name}",
+      "size": "Large",
+      "weight": "Bolder",
+      "wrap": true,
+      "spacing": "Medium"
+    },
+    {
+      "type": "TextBlock",
+      "text": "${source}",
+      "isSubtle": true,
+      "size": "Small",
+      "wrap": true,
+      "spacing": "None"
+    },
+    {
+      "type": "FactSet",
+      "spacing": "Medium",
+      "facts": [
+        { "title": "Decision", "value": "${decision_id}" },
+        { "title": "Registry match", "value": "${if(registry_match, '✓ verified', '✗ unknown')}" },
+        { "title": "Signature", "value": "${if(signature_valid, '✓ HMAC verified', '✗ invalid or unsigned')}" },
+        { "title": "Policy", "value": "${policy_version}" }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Reasons",
+      "weight": "Bolder",
+      "size": "Small",
+      "spacing": "Medium",
+      "$when": "${count(reasons) > 0}"
+    },
+    {
+      "type": "Container",
+      "$when": "${count(reasons) > 0}",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "• ${$data}",
+          "wrap": true,
+          "spacing": "Small",
+          "$data": "${reasons}"
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Findings (${count(findings)})",
+      "weight": "Bolder",
+      "size": "Small",
+      "spacing": "Medium",
+      "$when": "${count(findings) > 0}"
+    },
+    {
+      "type": "Container",
+      "$when": "${count(findings) > 0}",
+      "items": [
+        {
+          "type": "Container",
+          "separator": true,
+          "spacing": "Small",
+          "$data": "${findings}",
+          "items": [
+            {
+              "type": "TextBlock",
+              "text": "${severity}",
+              "size": "Small",
+              "weight": "Bolder",
+              "color": "${if(severity == 'critical', 'Attention', if(severity == 'high', 'Warning', 'Default'))}",
+              "spacing": "None"
+            },
+            {
+              "type": "TextBlock",
+              "text": "${message}",
+              "wrap": true,
+              "spacing": "None"
+            },
+            {
+              "type": "TextBlock",
+              "text": "${field} → ${evidence}",
+              "isSubtle": true,
+              "size": "Small",
+              "wrap": true,
+              "spacing": "None"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Submit",
+      "title": "Allow delegation",
+      "style": "positive",
+      "data": {
+        "action": "allow",
+        "decision_id": "${decision_id}",
+        "agent_name": "${agent_name}"
+      }
+    },
+    {
+      "type": "Action.Submit",
+      "title": "Block",
+      "style": "destructive",
+      "data": {
+        "action": "block",
+        "decision_id": "${decision_id}",
+        "agent_name": "${agent_name}"
+      }
+    },
+    {
+      "type": "Action.OpenUrl",
+      "title": "View on GitHub",
+      "url": "https://github.com/oneKn8/agentgov"
+    }
+  ]
+}

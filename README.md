@@ -57,7 +57,7 @@ PASS · WARN · BLOCK
 </tr>
 </table>
 
-Every decision — trust or release — is **HMAC-signed**, **idempotent**, **instrumented with OpenTelemetry GenAI semantic conventions**, and persisted to **local SQLite by default**. Dataverse and SharePoint adapters available.
+Every decision — trust or release — is **HMAC-signed**, **idempotent**, **instrumented with OpenTelemetry GenAI semantic conventions**, and persisted to **local SQLite**. Dataverse and SharePoint adapters are scaffolded for future tenant-storage backends; the shipped engine is SQLite-only.
 
 ---
 
@@ -148,7 +148,8 @@ npm test
 # Verify the HMAC signature on a stored decision record
 agentgov signature verify outputs/release-decision.json
 
-# Revoke a release post-deployment (audit-logged, immutable)
+# Revoke a release post-deployment (marks the existing decision row revoked;
+# original signed payload + signature stay intact for audit replay)
 agentgov release revoke <release_id> --reason "post-release regression"
 ```
 
@@ -188,7 +189,7 @@ Production deployment to Azure Container Apps via `azd up` is wired in `azure.ya
 
 ![AgentGov architecture](docs/architecture.svg)
 
-One MCP Streamable HTTP server, two tool families (6 trust + 8 release), one signed decision schema, one Dataverse / SharePoint / SQLite decision table, one CLI.
+One MCP Streamable HTTP server, two tool families (6 trust + 8 release), one signed decision schema, one local-first SQLite decision table (Dataverse / SharePoint adapters scaffolded behind the same `Storage` interface for future tenant-storage work), one CLI.
 
 | Surface | Tools |
 |---|---|
@@ -197,6 +198,31 @@ One MCP Streamable HTTP server, two tool families (6 trust + 8 release), one sig
 | **CLI** | `agentgov trust check` · `agentgov release check` · `agentgov release revoke` · `agentgov policy validate` · `agentgov policy testset` · `agentgov signature verify` |
 
 Trust lifecycle: [`docs/architecture-trust.svg`](docs/architecture-trust.svg) · Release lifecycle: [`docs/architecture-release.svg`](docs/architecture-release.svg)
+
+---
+
+## Verdict inspector — browse and try AgentGov in the browser
+
+![AgentGov Verdict Inspector — browsable audit of signed decisions](docs/viewer-screenshot.png)
+
+A zero-dependency static viewer at [`docs/viewer/`](docs/viewer/) renders every persisted decision with HMAC signature, evidence trail, OpenTelemetry span, and revoke history. Drop the directory on any static host — GitHub Pages, S3, Cloudflare R2 — and you have a per-tenant audit dashboard with no backend.
+
+**In-browser Trust Gate playground.** The viewer ships with a JavaScript port of `src/tools/trust/scanCardMetadata.ts` + `checkTrustRegistry.ts` + `issueTrustVerdict.ts`. Paste an A2A agent card, hit **Run Trust Gate**, and the verdict (`ALLOW` / `ALLOW_SANITIZED` / `REVIEW` / `BLOCK`) is computed live on the client against the same rules the production engine ships. Cryptographic signature verification still requires the CLI (`agentgov signature verify`); everything else — injection regex patterns, registry domain matching, skill allowlists, risk score, verdict thresholds — runs entirely in the browser.
+
+![Try-it panel — paste an agent card, get a verdict](docs/viewer-tryit-screenshot.png)
+
+```bash
+# Generate decisions locally
+agentgov trust check fixtures/agent-cards/poisoned-injection.json --offline
+agentgov release check target-agents/vendor-exception.yaml --eval fixtures/eval-results/block.json
+
+# Export + browse
+node scripts/export-verdicts.mjs
+python3 -m http.server --directory docs/viewer 8765
+# → open http://localhost:8765
+```
+
+See **[`docs/viewer/README.md`](docs/viewer/README.md)** for the export script, data contract, and what the viewer is and is not.
 
 ---
 
@@ -211,7 +237,7 @@ Trust lifecycle: [`docs/architecture-trust.svg`](docs/architecture-trust.svg) ·
 | **Observability** | OpenTelemetry [GenAI semantic conventions](https://opentelemetry.io/docs/specs/semconv/gen-ai/) spans on every Trust and Release Gate verdict. [`docs/observability.md`](docs/observability.md). |
 | **Data minimization** | No raw sensitive payloads in audit logs. Evidence referenced by ID. Redaction at the persistence boundary. [`docs/data-minimization.md`](docs/data-minimization.md). |
 | **Regression detection** | Each release compared against last 5 runs. Pass-rate drop ≥5pp or new failure category → `WARN`. |
-| **Idempotency + revocation** | Same `release_id` → same record. `POST /releases/{id}/revoke` appends audit row without rewriting history. |
+| **Idempotency + revocation** | Same `release_id` → same persisted record. `POST /releases/{id}/revoke` marks the existing row revoked (`revoked_at`, `revoked_by`, `revoke_reason`) while leaving the signed payload and HMAC signature intact. |
 | **Local-first** | SQLite default. Dataverse and SharePoint as adapters behind a clean `Storage` interface. |
 | **MCP + CLI parity** | Every capability via both surfaces. CLI runs without Copilot Studio. |
 

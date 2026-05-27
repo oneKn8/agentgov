@@ -1,0 +1,159 @@
+{
+  "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+  "type": "AdaptiveCard",
+  "version": "1.5",
+  "$comment": "AgentGov Release Gate decision -> Teams Adaptive Card. Bind via Power Automate 'Post adaptive card and wait for response' with $data = ReleaseDecision JSON. Verdict color via $when conditions; approve/reject buttons surface Action.Submit so the flow can persist the human decision back into AgentGov.",
+  "speak": "AgentGov release decision: ${verdict} for ${agent_name}",
+  "body": [
+    {
+      "type": "Container",
+      "style": "${if(verdict == 'BLOCK', 'attention', if(verdict == 'WARN', 'warning', 'good'))}",
+      "bleed": true,
+      "items": [
+        {
+          "type": "ColumnSet",
+          "columns": [
+            {
+              "type": "Column",
+              "width": "auto",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "AGENTGOV",
+                  "weight": "Bolder",
+                  "size": "Small",
+                  "color": "Light",
+                  "spacing": "None"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "Release Gate",
+                  "isSubtle": true,
+                  "size": "Small",
+                  "spacing": "None"
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "width": "stretch",
+              "items": [
+                {
+                  "type": "TextBlock",
+                  "text": "${verdict}",
+                  "weight": "Bolder",
+                  "size": "ExtraLarge",
+                  "horizontalAlignment": "Right",
+                  "spacing": "None"
+                },
+                {
+                  "type": "TextBlock",
+                  "text": "${formatNumber(pass_rate, 0)}% pass · ${critical_failures} critical",
+                  "isSubtle": true,
+                  "size": "Small",
+                  "horizontalAlignment": "Right",
+                  "spacing": "None"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "${agent_name}",
+      "size": "Large",
+      "weight": "Bolder",
+      "wrap": true,
+      "spacing": "Medium"
+    },
+    {
+      "type": "FactSet",
+      "facts": [
+        { "title": "Release", "value": "${release_id}" },
+        { "title": "Owner", "value": "${owner}" },
+        { "title": "Approve by", "value": "${approval_deadline}" },
+        { "title": "Policy", "value": "${policy_version}" }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Root causes",
+      "weight": "Bolder",
+      "size": "Small",
+      "spacing": "Medium",
+      "$when": "${count(root_causes) > 0}"
+    },
+    {
+      "type": "Container",
+      "$when": "${count(root_causes) > 0}",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "• ${$data}",
+          "wrap": true,
+          "spacing": "Small",
+          "$data": "${root_causes}"
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Recommended fixes",
+      "weight": "Bolder",
+      "size": "Small",
+      "spacing": "Medium",
+      "$when": "${count(recommended_fixes) > 0}"
+    },
+    {
+      "type": "Container",
+      "$when": "${count(recommended_fixes) > 0}",
+      "items": [
+        {
+          "type": "TextBlock",
+          "text": "• ${$data}",
+          "wrap": true,
+          "spacing": "Small",
+          "$data": "${recommended_fixes}"
+        }
+      ]
+    },
+    {
+      "type": "TextBlock",
+      "text": "Signed verdict — verifiable with: agentgov signature verify ${release_id}",
+      "isSubtle": true,
+      "size": "Small",
+      "wrap": true,
+      "spacing": "Medium",
+      "$when": "${signature != null && signature != ''}"
+    }
+  ],
+  "actions": [
+    {
+      "type": "Action.Submit",
+      "title": "Approve release",
+      "style": "positive",
+      "data": {
+        "action": "approve",
+        "release_id": "${release_id}",
+        "agent_id": "${agent_id}"
+      }
+    },
+    {
+      "type": "Action.Submit",
+      "title": "Request changes",
+      "style": "destructive",
+      "data": {
+        "action": "request_changes",
+        "release_id": "${release_id}",
+        "agent_id": "${agent_id}"
+      }
+    },
+    {
+      "type": "Action.OpenUrl",
+      "title": "View decision",
+      "url": "${if(viewer_url != null && viewer_url != '', viewer_url, 'https://github.com/oneKn8/agentgov')}"
+    }
+  ]
+}
