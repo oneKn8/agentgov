@@ -277,17 +277,38 @@ When the Dataverse adapter is wired in, the target setup will be:
 
 Wiring the adapter is a tracked follow-up; implementation lives in `src/storage/DataverseStorage.ts`. SharePoint storage follows the same pattern via `src/storage/SharePointStorage.ts`.
 
-## Step 8 — Power Automate Adaptive Card approval (planned)
+## Step 8 — Power Automate Adaptive Card approval
 
-> **Prerequisite:** Requires the Dataverse adapter from Step 7. Until that is wired into `getStorage()`, this flow has no `ag_release_decisions` table to trigger on. For demos before Dataverse lands, route the packet manually (`docs/architecture-release.svg` shows the packet shape; `agentgov release check ... --eval ...` prints it).
+> **Two delivery paths.** AgentGov ships ready-to-use Adaptive Card 1.5 templates at [`templates/`](../templates/). They render the verdict and emit `Action.Submit` events that Power Automate can branch on. Pick the path that matches your storage layer:
+>
+> - **HTTP path (works today):** Power Automate "When an HTTP request is received" trigger; AgentGov posts the verdict JSON directly. No Dataverse needed.
+> - **Dataverse path (post Step 7):** Power Automate "When a row is added" trigger on the `ag_release_decisions` table. Cleaner audit trail; depends on the Dataverse adapter from Step 7.
 
-Once Dataverse storage is wired, the release packet can be routed to an owner via Power Automate:
+### Path A — HTTP webhook trigger (zero-storage path)
 
-1. Power Automate → Create → Automated cloud flow.
-2. Trigger: **When a row is added to a Dataverse table** → table `ag_release_decisions` → filter rows: `verdict eq 'BLOCK' or verdict eq 'WARN'`.
-3. Add action: **Post adaptive card and wait for a response** → recipient: dynamic field from `owner` column → card template: paste the JSON from `docs/adaptive-cards/release-verdict.json` (Batch 4 deliverable).
-4. Add action: **Update a row** → set a `decision_status` column to the approver's response.
-5. Save and test by inserting a row manually.
+1. Power Automate → Create → Automated cloud flow → trigger: **When an HTTP request is received**.
+2. Request body JSON schema: paste either schema:
+   - Release: `schemas/release-decision.schema.json`
+   - Trust: `schemas/trust-verdict.schema.json`
+3. Add action: **Post adaptive card and wait for a response** (Teams connector).
+   - Recipient: `triggerBody()?['owner']` (Release) or a fixed channel (Trust)
+   - Message: paste the JSON from `templates/adaptive-card-release-decision.json` (or `templates/adaptive-card-trust-verdict.json`). Power Automate's Teams connector auto-resolves `${variable}` placeholders against the trigger body.
+4. Branch on the submitted action:
+   - Release: `outputs('Post_adaptive_card')?['body/data/action']` is `approve` or `request_changes`
+   - Trust: `outputs('Post_adaptive_card')?['body/data/action']` is `allow` or `block`
+5. Persist the human decision: on `request_changes`/`block` → HTTP POST to `https://your-agentgov/releases/{release_id}/revoke` with `x-agentgov-revoke-token` header.
+
+Tell AgentGov where to post: set `AGENTGOV_WEBHOOK_URL` (or wire the HTTP trigger into your custom integration) and have your client read `decision_record` after a `BLOCK`/`WARN` verdict and forward it to that URL.
+
+### Path B — Dataverse trigger (production path, requires Step 7)
+
+1. Wire the Dataverse adapter from [Step 7](#step-7--dataverse--sharepoint-decision-storage-planned-not-yet-wired).
+2. Power Automate → Create → Automated cloud flow → trigger: **When a row is added to a Dataverse table** → table `ag_release_decisions` → filter rows: `verdict eq 'BLOCK' or verdict eq 'WARN'`.
+3. Same Steps 3–5 as Path A.
+
+### Card templates
+
+The two cards in `templates/` use Adaptive Cards v1.5 with the official [templating syntax](https://learn.microsoft.com/en-us/adaptive-cards/templating/). They iterate `findings[]` and `failures[]`, color-shift on verdict, and surface signed-decision metadata. Preview them at <https://adaptivecards.io/designer/> with a real verdict payload from `outputs/`.
 
 ## Step 9 — Troubleshooting
 
