@@ -1,155 +1,118 @@
-# AgentGov 5-Minute Demo Script
+# AgentGov 90-Second Demo Script
 
-**Target length:** 4:45-5:00 (hard cap at 5:00 per Microsoft Agent Academy rules)
-**Recording tools:** OBS Studio (screen + webcam), DaVinci Resolve (edit), Descript (audio cleanup + captions)
-**Audio:** Voiceover in Shifat's own voice — clean, deliberate, no music under voice; light ambient bed for intro/outro stings only
+**Target length:** 1:25–1:30. Record at 1:35 raw, trim to 1:30 in post.
+**Format:** Screen capture (full-screen terminal) + voiceover. Webcam PIP only at hook + CTA.
+**Companion script:** `scripts/demo.sh` runs trust → release → revoke → export in sequence with paced banners. Set `DEMO_PACE=5` for live narration timing; `DEMO_PACE=1` for rehearsal. Set `DEMO_FRESH=1` to wipe `outputs/` before recording so the run is deterministic.
+
+The 5-minute long-form script (with architecture deep-dive, prior-art callouts, and Adaptive Card scene) lives in [git history](https://github.com/oneKn8/agentgov/commits/main/docs/demo-script.md) — checkout an earlier commit if a long-form submission video is needed.
 
 ## Pre-record checklist
 
-- [ ] Codex's engine merged to `main` and `npm run test:smoke` passes
-- [ ] Claude's `claude/docs-wiring` merged to `main` (CI workflows + docs live)
-- [ ] Adaptive Card flow tested end-to-end (or fallback Markdown packet ready)
-- [ ] OBS scene: full-screen terminal + small webcam PIP bottom-right
-- [ ] Architecture PNG opens cleanly without artifacts
-- [ ] Sample commands typed-out in a notes file for clean copy-paste during recording
-- [ ] Microphone test: Fifine K669 USB at ~30dB room noise floor
-- [ ] Closet/blanket-fort recording space to kill reflections
+- [ ] `npm run build && npm run test:smoke` passes on latest `main`
+- [ ] `DEMO_FRESH=1 bash scripts/demo.sh` runs cleanly end-to-end at PACE=1
+- [ ] OBS scene: full-screen terminal, font ≥18pt, dark theme; webcam PIP bottom-right enabled only for the hook and outro
+- [ ] Browser tab open to `http://localhost:8765` with `python3 -m http.server --directory docs/viewer 8765` already running (ACT 4 cuts to this)
+- [ ] Mic check ≤ −20dB peak; closet / blanket-fort recording space
+- [ ] All commands in the script are pre-typed in a notes file for paste, not typed live
 
 ## Scenes
 
-### 0:00–0:25 — HOOK
+### 0:00–0:08 — HOOK (webcam PIP on)
 
-**On-screen:** Webcam PIP. Background: terminal with Copilot Studio agent dashboard visible behind.
+**On-screen:** Quick cut from Copilot Studio agent dashboard → terminal cursor.
+**Lower-third:** "Two questions. One product. Signed decisions."
 
-**Voiceover:**
-> "Microsoft Copilot Studio shipped multi-agent systems in April 2026. Six weeks later, every enterprise asks two governance questions: 'Can my agent safely delegate to this external agent?' and 'Is my own agent trustworthy enough to ship to users?' Microsoft Agent 365 is the enterprise control plane that consumes the answers. AgentGov is the open-source maker layer that produces them."
+> "Microsoft Agent 365 shipped on May 1. Copilot Studio makers still get no answer to two governance questions: can my agent trust this external agent, and is my own agent ready to ship?"
 
-**Lower-third caption:** "Two questions. One product. Signed decisions."
+### 0:08–0:23 — ACT 1: Trust Gate BLOCKs a poisoned card
 
-### 0:25–2:00 — ACT 1: TRUST GATE
+**On-screen:** Terminal. Run via `bash scripts/demo.sh` — let the banner appear, then the trust output.
 
-**On-screen:** Clean terminal. No webcam PIP during demo.
-
-**Type:**
 ```bash
 agentgov trust check fixtures/agent-cards/poisoned-injection.json --offline
 ```
 
-**On output, highlight with cursor:**
-- `"verdict": "BLOCK"`
-- `"risk_score": 100`
-- The `reasons[]` list: unsigned, no registry match, prompt-injection text found, external URL in metadata
-- Three `findings[]` with evidence snippets
+**Cursor-highlight in order:** `"verdict": "BLOCK"` → `"risk_score": 100` → the `reasons` list.
 
-**Voiceover during reveal:**
-> "External agent advertises itself with a card. AgentGov fetches it, fails signature verification, fails trust-registry lookup, then scans the metadata. Finds three instances of instruction-overriding text trying to hijack the orchestrator. Verdict: BLOCK. Risk score 100. Every finding citable."
+> "External agent advertises itself with a card. AgentGov fails signature verification, fails trust-registry lookup, scans the metadata, and finds three prompt-injection strings trying to hijack the orchestrator. Verdict: BLOCK. Risk score 100."
 
-**Then type:**
+### 0:23–0:33 — ACT 1b: Trust Gate ALLOWs a signed card
+
+**On-screen:** Same terminal, next banner.
+
 ```bash
 agentgov trust check fixtures/agent-cards/trusted-signed.json --offline
 ```
 
-**On output:**
-- `"verdict": "ALLOW"`
-- `"registry_match": true`
-- `"signature_valid": true`
-- HMAC `signature` at the bottom
+**Highlight:** `"verdict": "ALLOW"` and the HMAC `signature`.
 
-**Voiceover:**
-> "Same product, signed and registered card: ALLOW with full provenance. Both decisions are HMAC-signed and persisted to a tamper-evident audit log."
+> "Same product, signed and registered: ALLOW, with a verifiable HMAC signature on the decision itself."
 
-### 2:00–3:30 — ACT 2: RELEASE GATE
+### 0:33–0:53 — ACT 2: Release Gate BLOCKs an unready agent
 
-**Type:**
+**On-screen:** Terminal.
+
 ```bash
 agentgov release check target-agents/vendor-exception.yaml \
   --eval fixtures/eval-results/block.json
 ```
 
-**On output, walk through:**
-- `"verdict": "BLOCK"`
-- `"pass_rate": 62`
-- `"critical_failures": 3`, `"tool_call_failures": 1`, `"policy_failures": 4`
-- `"root_causes"` summarized
-- `"recommended_fixes"` checklist
+**Highlight in order:** `"verdict": "BLOCK"` → `"pass_rate": 62` → `critical_failures: 7` → the first three `recommended_fixes`. Then the script shows `head -40 outputs/release-packet.md` — the signed Markdown packet.
 
-**Voiceover:**
-> "Same Copilot Studio agent owner, different question: is my own Vendor Exception Agent ready to ship? AgentGov ingests evaluation results, evaluates them against a policy YAML, asserts expected tool calls, and detects regression against the last five release decisions. This run blocks: 62% pass rate, three critical failures, missing policy_lookup tool call, missing finance approval on a $50K exception."
+> "Different question, same product. Vendor Exception Agent — approved a fifty-thousand-dollar exception without policy lookup or finance approval. Sixty-two percent pass rate, seven critical failures. Verdict: BLOCK. The release packet is signed Markdown, ready for the owner."
 
-**Then open the rendered packet:**
+### 0:53–1:08 — ACT 3: Revoke + Audit (cut to viewer)
+
+**On-screen split:** Terminal shows the revoke command. **Cut to browser** at `http://localhost:8765` — the Verdict Inspector showing two decisions with verdicts, signatures, and the revoked release with its red banner.
+
 ```bash
-cat outputs/release-packet.md
+agentgov release revoke <release_id> --reason "post-release regression"
 ```
 
-**On the Markdown output:**
-- Title with agent name
-- Verdict + pass rate + owner + approval deadline + signature header block
-- Root Causes section
-- Findings section (severity-tagged)
-- Required Fixes checklist
+> "Post-release regression detected. One CLI call records the revoke — the original verdict and its signature aren't touched. Every decision is browsable in the local viewer: signed, verifiable, exportable as JSON."
 
-**Voiceover:**
-> "The release packet. Human-readable. Signed. Goes to the agent owner for review."
+### 1:08–1:20 — ACT 4: How it fits the Microsoft stack
 
-### 3:30–4:00 — APPROVAL + AUDIT
+**On-screen:** Cut to a clean four-row table card (pre-rendered SVG; the table is in `README.md`).
 
-**Switch to Teams window** (or Adaptive Card preview if Power Automate isn't wired live).
+> "AgentGov is not a replacement. Agent 365 is the enterprise control plane — AgentGov produces the evidence it consumes. EvalGateADO gates PR merges — AgentGov gates human release readiness. Sigstore-a2a signs cards — AgentGov enforces tenant policy. Purview audits the runtime — AgentGov governs the lifecycle."
 
-**Voiceover:**
-> "Routed via Power Automate as an Adaptive Card. The owner sees the verdict, the top three failures, and the remediation checklist. Approve or request changes — either way, the decision is persisted with the approver's verified identity. If a post-release regression appears, the release can be revoked with one CLI call. The audit row is appended; the original record stays immutable."
+### 1:20–1:30 — CTA (webcam PIP returns)
 
-**Quick CLI flash:**
+**On-screen:** GitHub URL title card with QR. Hold for the full final 4 seconds — judges open the repo while scoring.
+
+> "Built for the Microsoft Agent Academy Special Ops track. Open-source under MIT. CLI, MCP server, threat model, cost model, prior-art comparison — all in the repo. github dot com slash one-K-N-8 slash agentgov."
+
+## Cut list (if running over 1:30)
+
+In priority order, cut from the bottom:
+
+1. The signed-Markdown-packet preview in ACT 2 (saves 4s — replace with one-sentence callout)
+2. The Trust ALLOW scene in ACT 1b (saves 10s — go straight from BLOCK to release)
+3. The Microsoft-stack table in ACT 4 (saves 12s — replace with one sentence "Agent 365's evidence feed, not a replacement")
+
+**Hard floor:** Hook → one Trust BLOCK → one Release BLOCK → Revoke → GitHub URL CTA. Anything else is optional polish.
+
+## Recording flow
+
 ```bash
-agentgov release revoke release-... --reason "post-release regression"
+# Terminal 1: serve the viewer
+python3 -m http.server --directory docs/viewer 8765
+
+# Terminal 2: run the demo with narration pacing
+DEMO_FRESH=1 DEMO_PACE=5 bash scripts/demo.sh
+
+# Browser: http://localhost:8765 (cut to this during ACT 3)
 ```
 
-### 4:00–4:30 — ARCHITECTURE
+The script's banners between acts give the narrator natural pause points. `DEMO_PACE=5` leaves 5 seconds between sections — enough for one breath and a sip of water.
 
-**Switch to architecture PNG** (`docs/architecture.png`).
+## Fallback if the live MCP / Copilot Studio path is needed
 
-**Voiceover:**
-> "One MCP Streamable HTTP server. Two governance gates. Six trust tools, eight release tools. One signed decision schema. Local SQLite by default, with Dataverse and SharePoint adapters for tenant deployment. OpenTelemetry GenAI-spec spans on every decision. Free-tier path validated for under 500 decisions per day."
+This is the CLI-only version. If the submission requires the MCP transport story:
 
-**Caption the upstream/complementary relationships:**
-- "EvalGateADO gates PR merges — AgentGov gates human release readiness"
-- "sigstore-a2a signs cards — AgentGov enforces tenant trust policy"
-- "Agent 365 is the control plane — AgentGov produces the evidence it consumes"
-- "Purview audits runtime — AgentGov governs the lifecycle"
+1. Add an opening ACT 0 (10s): start the MCP server with `npm run mcp:start`, show `curl /healthz` → `{ ok: true }`.
+2. Replace ACT 1's CLI command with a `tools/list` MCP call showing all 14 tools.
+3. Tighten the rest to fit the same 90-second budget by dropping the Trust ALLOW scene.
 
-### 4:30–5:00 — CTA + CREDITS
-
-**On-screen:** GitHub URL + QR code on a clean title card. Webcam PIP returns.
-
-**Voiceover:**
-> "AgentGov is open source under MIT. The CLI works without Copilot Studio for evaluation today. The MCP server wires into Copilot Studio when you're ready. Threat model, cost model, and prior-art comparison all in the repo. Built for the Microsoft Agent Academy Special Ops track. github.com slash oneKn8 slash agentgov. Thank you."
-
-**Hold the GitHub URL on screen for the full final 4 seconds** so judges can read it during their scoring pass.
-
-## Cut list (if running over 5:00)
-
-In priority order — cut from the bottom:
-
-1. The architecture upstream/complementary caption flash (saves 10s)
-2. The CLI flash of `release revoke` (saves 5s)
-3. The trusted-card trust check (saves 20s) — but keep at least the BLOCK demonstration
-4. The approval card scene (saves 30s) — replace with a single sentence "routed to the owner for approval"
-
-Hard floor: hook + one trust BLOCK + one release BLOCK + GitHub URL CTA. Everything else is optional polish.
-
-## Fallback if Copilot Studio MCP wiring breaks
-
-The CLI demo carries the whole story without Copilot Studio. Replace the Adaptive Card scene with:
-
-> "When deployed as an MCP server, every one of these CLI calls becomes a tool Copilot Studio's orchestrator can invoke. The product behavior is identical; the deployment surface changes."
-
-Then show the architecture diagram with the MCP path highlighted.
-
-## Recording tips
-
-1. **Pre-type all commands** in a notes file. During recording, copy-paste — don't type live. Typos eat seconds and break flow.
-2. **Run the demo dry once** at 80% speed. If it's over 4:30 raw, cut before recording, not after.
-3. **Use Descript's Studio Sound** to clean up the audio without re-recording.
-4. **Captions burned in** at 1.5x viewing speed — judges often mute and skim.
-5. **Cursor zoom on click** — Screen Studio for Mac if available; otherwise increase pointer size + slow movements.
-6. **One bold lower-third caption per scene.** Reinforces voiceover for muted viewers.
-7. **End on the GitHub URL for ≥4 seconds.** Judges open the repo while scoring.
+The CLI version is the cheaper-to-record baseline. Both paths produce the same signed decision records, so the audit-trail evidence is identical.
