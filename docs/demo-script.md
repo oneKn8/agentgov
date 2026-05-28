@@ -107,6 +107,32 @@ DEMO_FRESH=1 DEMO_PACE=5 bash scripts/demo.sh
 
 The script's banners between acts give the narrator natural pause points. `DEMO_PACE=5` leaves 5 seconds between sections — enough for one breath and a sip of water.
 
+## Captions-only cut (no voiceover) — fully headless
+
+A ready-to-submit captions-only video is generated with zero recording gear:
+
+```bash
+scripts/render-demo-video.sh   # -> videos/agentgov-demo-captioned.mp4 (720p, ~56s)
+```
+
+How it works:
+- `scripts/demo.sh` has a `DEMO_CAPTIONS=1` mode that renders each scene's
+  narration as an on-screen reverse-video subtitle bar (`CAPTION_HOLD` seconds
+  each; terse by design so it reads in one beat — the terminal output carries
+  the detail).
+- The render script records the run with `asciinema`, rasterizes it with `agg`
+  (Fira Mono), normalizes to 1280×720 with `ffmpeg`, appends a 6-second
+  Verdict Inspector still, and concatenates to the final MP4.
+- Output: terminal walkthrough (trust BLOCK → trust ALLOW → release BLOCK →
+  signed packet → revoke → export) + viewer segment + GitHub CTA hold.
+
+**To do a voiceover cut instead** (higher founder signal): run
+`DEMO_CAPTIONS=0 DEMO_PACE=5 bash scripts/demo.sh`, screen-record it, and
+narrate the per-scene lines above. The same script serves both cuts.
+
+To re-skin captions, edit the `caption "..."` lines in `scripts/demo.sh` and
+re-run the render script.
+
 ## Fallback if the live MCP / Copilot Studio path is needed
 
 This is the CLI-only version. If the submission requires the MCP transport story:

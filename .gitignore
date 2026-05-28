@@ -7,3 +7,9 @@ outputs/
 *.db-shm
 *.db-wal
 coverage/
+
+# Rendered demo video artifacts (uploaded to YouTube; regenerate with
+# scripts/render-demo-video.sh). The pipeline is committed, the binaries aren't.
+videos/*.mp4
+*.cast
+*.gif

@@ -66,8 +66,7 @@ caption() {
     printf '%s%s  %-66s  %s\n' "$BOLD" "$REV" "$line" "$RESET"
   done
   printf '\n'
-  local hold=$(( PACE > 4 ? PACE : 5 ))
-  sleep "$hold"
+  sleep "${CAPTION_HOLD:-5}"
 }
 
 # Ensure dist/ exists. Build silently if not.
@@ -85,13 +84,13 @@ fi
 
 CLI="node dist/cli.js"
 
-caption "Microsoft Agent 365 shipped May 1, 2026. Copilot Studio makers still can't answer two governance questions: can my agent TRUST an external agent, and is my own agent READY to ship? AgentGov answers both with signed, verifiable decisions."
+caption "Two questions every Copilot Studio maker faces: can I trust an external agent, and is my own agent ready to ship?"
 
 # ─────────────────────────────────────────────────────────────────────
 banner "ACT 1 — Trust Gate blocks a poisoned external Agent Card"
 # ─────────────────────────────────────────────────────────────────────
 
-caption "An external A2A agent advertises itself with a card. AgentGov fails signature and registry checks, scans the metadata, and finds prompt-injection strings trying to hijack the orchestrator. Watch the verdict: BLOCK, risk score 100."
+caption "Untrusted agent card: signature fails, injection strings found. Verdict: BLOCK, risk score 100."
 
 step "External A2A agent advertises itself via /.well-known/agent-card.json"
 step "AgentGov fetches it, fails JWS verification, scans metadata, decides"
@@ -102,7 +101,7 @@ pause
 
 banner "ACT 1b — Same product, signed and registered: ALLOW with provenance"
 
-caption "The same product against a signed, registered card returns ALLOW, carrying a verifiable HMAC signature on the decision itself."
+caption "Signed and registered card: ALLOW, with an HMAC-signed verdict."
 
 cmd "agentgov trust check fixtures/agent-cards/trusted-signed.json --offline"
 $CLI trust check fixtures/agent-cards/trusted-signed.json --offline
@@ -112,7 +111,7 @@ pause
 banner "ACT 2 — Release Gate blocks an unready Copilot Studio agent"
 # ─────────────────────────────────────────────────────────────────────
 
-caption "Different question, same product. A Vendor Exception Agent approved a \$50K exception with no policy lookup or finance approval. 62% pass rate, 7 critical failures. Verdict: BLOCK, with a signed Markdown packet ready for the owner."
+caption "Agent approved a \$50K exception with no policy check. 62% pass, 7 critical failures: BLOCK."
 
 step "Vendor Exception Agent — approved a \$50K exception without policy lookup"
 step "Eval results + policy YAML → AgentGov classifies, signs, persists"
@@ -135,7 +134,7 @@ pause
 banner "ACT 3 — Revoke a release post-deployment (verdict intact, revoke metadata recorded)"
 # ─────────────────────────────────────────────────────────────────────
 
-caption "A post-release regression hits. One CLI call records the revoke. The original verdict and its signature are untouched. Every decision stays browsable, signed, and exportable."
+caption "Post-release regression: one call records the revoke. Original verdict and signature untouched."
 
 # Pull the most-recent release_id from SQLite so this works on any run.
 RELEASE_ID=$(node -e '
@@ -176,7 +175,7 @@ pause
 banner "ACT 4 — Verdict Inspector reads the signed audit trail"
 # ─────────────────────────────────────────────────────────────────────
 
-caption "AgentGov isn't a replacement for Agent 365. It produces the signed evidence that control plane consumes. Trust in, release out, every decision verifiable in a zero-dependency local viewer."
+caption "Not a replacement for Agent 365, the signed evidence feed it consumes. Trust in, release out."
 
 step "Export every decision + OTel span into the static viewer's JSON"
 echo
@@ -200,7 +199,10 @@ printf '  • %soutputs/otel-spans.jsonl%s — OpenTelemetry GenAI spans (Trust 
 printf '  • %soutputs/release-packet.md%s — signed Markdown packet for the agent owner\n' "$BOLD" "$RESET"
 printf '  • %sdocs/viewer/verdicts.json%s — viewer data file (regenerated above)\n' "$BOLD" "$RESET"
 echo
-caption "Built for Microsoft Agent Academy, Special Ops track. Open source under MIT: CLI, MCP server with 14 tools, threat model, cost model, and a prior-art comparison. Star it and read the threat model."
+caption "Microsoft Agent Academy, Special Ops track. MIT open source: CLI + MCP server, 14 tools. github.com/oneKn8/agentgov"
 
 printf '%sgithub.com/oneKn8/agentgov%s\n' "$GREEN$BOLD" "$RESET"
+
+# Hold the final CTA frame so it lingers in a captions-only recording.
+if [ "$CAPTIONS" = "1" ]; then sleep 4; fi
 echo
