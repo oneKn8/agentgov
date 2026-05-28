@@ -165,4 +165,4 @@ Frontier-only features (Copilot Cowork Custom Skills using the Anthropic SKILL.m
 
 ## Contact
 
-contact@rhemicai.com
+shifatislamsanto764@gmail.com
