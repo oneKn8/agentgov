@@ -16,6 +16,7 @@ set -euo pipefail
 
 PACE="${DEMO_PACE:-3}"
 FRESH="${DEMO_FRESH:-0}"
+CAPTIONS="${DEMO_CAPTIONS:-0}"
 
 # Node 22 still ships node:sqlite as experimental, so every CLI invocation
 # that touches SqliteStorage prints "(node:NNN) ExperimentalWarning: ..."
@@ -53,6 +54,22 @@ pause() {
   sleep "$PACE"
 }
 
+# Caption bar for the captions-only (no-voiceover) cut. Renders the narration
+# as a high-contrast reverse-video subtitle, word-wrapped, then holds long
+# enough to read. Enabled with DEMO_CAPTIONS=1; a no-op in voiceover mode so
+# the same script still works for a live narrated recording.
+REV=$(printf '\033[7m')
+caption() {
+  [ "$CAPTIONS" = "1" ] || return 0
+  printf '\n'
+  printf '%s\n' "$1" | fold -s -w 66 | while IFS= read -r line; do
+    printf '%s%s  %-66s  %s\n' "$BOLD" "$REV" "$line" "$RESET"
+  done
+  printf '\n'
+  local hold=$(( PACE > 4 ? PACE : 5 ))
+  sleep "$hold"
+}
+
 # Ensure dist/ exists. Build silently if not.
 if [ ! -f "dist/cli.js" ]; then
   printf '%sBuilding (dist/cli.js missing)…%s\n' "$DIM" "$RESET"
@@ -68,9 +85,13 @@ fi
 
 CLI="node dist/cli.js"
 
+caption "Microsoft Agent 365 shipped May 1, 2026. Copilot Studio makers still can't answer two governance questions: can my agent TRUST an external agent, and is my own agent READY to ship? AgentGov answers both with signed, verifiable decisions."
+
 # ─────────────────────────────────────────────────────────────────────
 banner "ACT 1 — Trust Gate blocks a poisoned external Agent Card"
 # ─────────────────────────────────────────────────────────────────────
+
+caption "An external A2A agent advertises itself with a card. AgentGov fails signature and registry checks, scans the metadata, and finds prompt-injection strings trying to hijack the orchestrator. Watch the verdict: BLOCK, risk score 100."
 
 step "External A2A agent advertises itself via /.well-known/agent-card.json"
 step "AgentGov fetches it, fails JWS verification, scans metadata, decides"
@@ -81,6 +102,8 @@ pause
 
 banner "ACT 1b — Same product, signed and registered: ALLOW with provenance"
 
+caption "The same product against a signed, registered card returns ALLOW, carrying a verifiable HMAC signature on the decision itself."
+
 cmd "agentgov trust check fixtures/agent-cards/trusted-signed.json --offline"
 $CLI trust check fixtures/agent-cards/trusted-signed.json --offline
 pause
@@ -88,6 +111,8 @@ pause
 # ─────────────────────────────────────────────────────────────────────
 banner "ACT 2 — Release Gate blocks an unready Copilot Studio agent"
 # ─────────────────────────────────────────────────────────────────────
+
+caption "Different question, same product. A Vendor Exception Agent approved a \$50K exception with no policy lookup or finance approval. 62% pass rate, 7 critical failures. Verdict: BLOCK, with a signed Markdown packet ready for the owner."
 
 step "Vendor Exception Agent — approved a \$50K exception without policy lookup"
 step "Eval results + policy YAML → AgentGov classifies, signs, persists"
@@ -109,6 +134,8 @@ pause
 # ─────────────────────────────────────────────────────────────────────
 banner "ACT 3 — Revoke a release post-deployment (verdict intact, revoke metadata recorded)"
 # ─────────────────────────────────────────────────────────────────────
+
+caption "A post-release regression hits. One CLI call records the revoke. The original verdict and its signature are untouched. Every decision stays browsable, signed, and exportable."
 
 # Pull the most-recent release_id from SQLite so this works on any run.
 RELEASE_ID=$(node -e '
@@ -149,6 +176,8 @@ pause
 banner "ACT 4 — Verdict Inspector reads the signed audit trail"
 # ─────────────────────────────────────────────────────────────────────
 
+caption "AgentGov isn't a replacement for Agent 365. It produces the signed evidence that control plane consumes. Trust in, release out, every decision verifiable in a zero-dependency local viewer."
+
 step "Export every decision + OTel span into the static viewer's JSON"
 echo
 cmd "node scripts/export-verdicts.mjs"
@@ -171,5 +200,7 @@ printf '  • %soutputs/otel-spans.jsonl%s — OpenTelemetry GenAI spans (Trust 
 printf '  • %soutputs/release-packet.md%s — signed Markdown packet for the agent owner\n' "$BOLD" "$RESET"
 printf '  • %sdocs/viewer/verdicts.json%s — viewer data file (regenerated above)\n' "$BOLD" "$RESET"
 echo
+caption "Built for Microsoft Agent Academy, Special Ops track. Open source under MIT: CLI, MCP server with 14 tools, threat model, cost model, and a prior-art comparison. Star it and read the threat model."
+
 printf '%sgithub.com/oneKn8/agentgov%s\n' "$GREEN$BOLD" "$RESET"
 echo
