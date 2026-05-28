@@ -1,0 +1,20 @@
+{
+  "name": "Northwind Freight Coordinator",
+  "description": "Coordinates freight bookings and returns carrier quotes and estimated delivery windows.",
+  "url": "https://northwind.example/agents/freight/a2a",
+  "version": "0.9.3",
+  "provider": {
+    "organization": "Northwind Traders",
+    "url": "https://northwind.example"
+  },
+  "capabilities": {
+    "streaming": false
+  },
+  "skills": [
+    {
+      "id": "freight_quote",
+      "name": "Freight Quote",
+      "description": "Return carrier quotes for a shipment given origin, destination, and weight."
+    }
+  ]
+}

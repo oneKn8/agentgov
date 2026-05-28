@@ -1,0 +1,29 @@
+{
+  "name": "Contoso Expense Auditor",
+  "description": "Audits employee expense reports against company policy and returns a structured compliance summary.",
+  "url": "https://contoso.com/agents/expense-auditor/a2a",
+  "version": "2.1.0",
+  "provider": {
+    "organization": "Contoso, Ltd.",
+    "url": "https://contoso.com"
+  },
+  "capabilities": {
+    "streaming": true
+  },
+  "skills": [
+    {
+      "id": "expense_lookup",
+      "name": "Expense Lookup",
+      "description": "Retrieve an expense report and its line items by report id."
+    }
+  ],
+  "signatures": [
+    {
+      "header": {
+        "alg": "HS256-demo",
+        "kid": "contoso-key-1"
+      },
+      "signature": "zLC-tmiWAO_ZjhUefAGP_dIWbGtsmfBYTV48OfdOp2E"
+    }
+  ]
+}

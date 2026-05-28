@@ -7,6 +7,13 @@
       "secret": "agentgov-demo-card-secret",
       "allowedSkills": ["invoice_review", "vendor_lookup"],
       "maxRisk": 30
+    },
+    {
+      "domain": "contoso.com",
+      "kid": "contoso-key-1",
+      "secret": "agentgov-demo-contoso-secret",
+      "allowedSkills": ["expense_lookup", "invoice_review"],
+      "maxRisk": 30
     }
   ]
 }
