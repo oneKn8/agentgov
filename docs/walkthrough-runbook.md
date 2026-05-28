@@ -31,6 +31,11 @@ devtunnel user login
 devtunnel host -p 3000 --allow-anonymous     # copy the https://<id>-3000.devtunnels.ms URL
 ```
 
+**Before wiring, confirm the endpoint is ready** (token + a real tool call — exactly what Copilot Studio does):
+```bash
+node scripts/mcp-http-check.mjs <devtunnel-url>/mcp "$AGENTGOV_MCP_TOKEN"   # expect: PASS — ready for Copilot Studio
+```
+
 ## Step 2 — Wire Copilot Studio (your tenant)
 `copilotstudio.microsoft.com` → new agent →
 1. Settings → Generative AI → Orchestration → **Generative**.
