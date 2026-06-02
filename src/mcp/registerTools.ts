@@ -61,8 +61,6 @@ const releaseDecisionSchema = z
   })
   .passthrough();
 
-const releaseDecisionCache = new Map<string, Promise<ReleaseDecision>>();
-
 export function registerAgentGovTools(server: McpServer): void {
   server.registerTool(
     "inspect_agent_card",
@@ -228,16 +226,12 @@ export function registerAgentGovTools(server: McpServer): void {
 }
 
 async function classifyFromPaths(profilePath: string, evalPath: string): Promise<ReleaseDecision> {
-  const cacheKey = `${profilePath}\0${evalPath}`;
-  let decision = releaseDecisionCache.get(cacheKey);
-  if (!decision) {
-    decision = classifyReleaseRisk(loadAgentProfile(profilePath), ingestEvalResults(evalPath), {
-      profilePath,
-      storage: await getStorage()
-    });
-    releaseDecisionCache.set(cacheKey, decision);
-  }
-  return decision;
+  // Classify fresh each call: the eval file and the regression history both change
+  // over a server's lifetime, so a memoized decision would go stale.
+  return classifyReleaseRisk(loadAgentProfile(profilePath), ingestEvalResults(evalPath), {
+    profilePath,
+    storage: await getStorage()
+  });
 }
 
 function jsonResult(value: unknown) {

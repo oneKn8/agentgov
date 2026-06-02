@@ -19,8 +19,25 @@ function normalize(text: string): string {
   return text.normalize("NFKC").replace(/\s+/g, " ");
 }
 
+function hostOf(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
 export function scanCardMetadata(card: AgentCard): TrustFinding[] {
   const skills = Array.isArray(card.skills) ? card.skills : [];
+
+  // A URL pointing at the card's own declared domain is a self-reference, not an
+  // exfiltration signal. Only flag URLs that leave the agent's first party.
+  const selfHosts = [hostOf(card.url), hostOf(card.provider?.url)].filter((host): host is string => host !== null);
+  const isFirstParty = (url: string): boolean => {
+    const host = hostOf(url);
+    return host !== null && selfHosts.some((self) => host === self || host.endsWith(`.${self}`));
+  };
 
   // Injection patterns run on every text-bearing field an attacker controls,
   // including the ones an orchestrator surfaces but the original scanner ignored
@@ -72,6 +89,7 @@ export function scanCardMetadata(card: AgentCard): TrustFinding[] {
   for (const [field, text] of urlFields) {
     const urls = normalize(text).match(URL_PATTERN) ?? [];
     for (const url of urls) {
+      if (isFirstParty(url)) continue;
       findings.push({
         id: `metadata-url-${findings.length + 1}`,
         severity: "medium",

@@ -39,3 +39,32 @@ describe("classifyReleaseRisk regression handling", () => {
     expect(regression?.severity).toBe("medium");
   });
 });
+
+describe("classifyReleaseRisk evidence handling", () => {
+  // R3 — evidence may be declared explicitly, not only inferred from case id substrings
+  it("accepts required evidence declared via the eval evidence[] field", () => {
+    const decision = classifyReleaseRisk({
+      profile: profile({ required_evidence: ["audit_trail"] }),
+      evalResult: {
+        agent_id: "a1",
+        run_id: "r-evidence",
+        pass_rate: 98,
+        context: {},
+        evidence: ["audit_trail"],
+        cases: [{ id: "unrelated-case", category: "core_happy_path", passed: true, severity: "low" }]
+      } as unknown as EvalResult,
+      previousRuns: []
+    });
+    expect(decision.failures.some((f) => f.category === "evidence")).toBe(false);
+    expect(decision.verdict).toBe("PASS");
+  });
+
+  it("flags missing evidence when it is neither declared nor matched by a case id", () => {
+    const decision = classifyReleaseRisk({
+      profile: profile({ required_evidence: ["audit_trail"] }),
+      evalResult: evalResult(98),
+      previousRuns: []
+    });
+    expect(decision.failures.some((f) => f.category === "evidence")).toBe(true);
+  });
+});

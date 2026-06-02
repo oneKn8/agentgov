@@ -69,6 +69,9 @@ export interface EvalResult {
   pass_rate: number;
   cases: EvalCaseResult[];
   context?: Record<string, unknown>;
+  /** Evidence artifacts produced by this run, declared explicitly so required-evidence
+   *  checks do not depend on fragile substring matches against case ids. */
+  evidence?: string[];
   created_at?: string;
 }
 

@@ -33,8 +33,11 @@ export function classifyReleaseRisk(input: ReleaseClassificationInput): ReleaseD
     });
   }
 
+  const declaredEvidence = Array.isArray(input.evalResult.evidence) ? input.evalResult.evidence : [];
   for (const evidence of input.profile.required_evidence ?? []) {
-    if (!input.evalResult.cases.some((test) => test.id.includes(evidence) || test.category.includes(evidence))) {
+    const declared = declaredEvidence.includes(evidence);
+    const inferredFromCase = input.evalResult.cases.some((test) => test.id.includes(evidence) || test.category.includes(evidence));
+    if (!declared && !inferredFromCase) {
       failures.push({
         id: `missing-evidence-${evidence}`,
         category: "evidence",

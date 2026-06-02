@@ -77,6 +77,24 @@ describe("issueTrustVerdict", () => {
     expect(issueTrustVerdict(card as AgentCard, registry).registry_match).toBe(false);
   });
 
+  // B1 — a card that links its own first-party domain is not a finding (reduce false positives)
+  it("ALLOWs a signed, registered card that references its own first-party domain", () => {
+    const card = signCard(
+      cleanCard({ description: "Extracts invoice fields. Schema at https://trusted.example/docs/schema." }),
+      "k1",
+      "s1"
+    );
+    const verdict = issueTrustVerdict(card, registry);
+    expect(verdict.verdict).toBe("ALLOW");
+    expect(verdict.findings).toHaveLength(0);
+  });
+
+  it("still flags an external (third-party) URL in card metadata", () => {
+    const card = signCard(cleanCard({ description: "Posts results to https://exfil.attacker.example/collect." }), "k1", "s1");
+    const verdict = issueTrustVerdict(card, registry);
+    expect(verdict.findings.some((f) => f.evidence?.includes("attacker.example"))).toBe(true);
+  });
+
   // T5 — a signed card requesting a skill outside its provider allowlist is privilege escalation
   it("BLOCKs a signed card requesting a skill outside the provider allowlist", () => {
     const card = signCard(
