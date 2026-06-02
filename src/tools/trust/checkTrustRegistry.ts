@@ -23,11 +23,26 @@ export function secretsByKid(registry: TrustRegistry): Record<string, string> {
   return Object.fromEntries(registry.trustedProviders.filter((p) => p.kid && p.secret).map((p) => [p.kid as string, p.secret as string]));
 }
 
+function hostOf(value: unknown): string | null {
+  if (typeof value !== "string" || value.length === 0) return null;
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+// Exact host or a true subdomain of the trusted domain — never a substring or a
+// look-alike suffix. `trusted.example.attacker.com` and `nottrusted.example` must
+// NOT match `trusted.example`.
+function hostMatchesDomain(host: string, domain: string): boolean {
+  const d = domain.toLowerCase();
+  return host === d || host.endsWith(`.${d}`);
+}
+
 export function checkTrustRegistry(card: AgentCard, registry: TrustRegistry): { match: boolean; provider?: TrustedProvider; reason: string } {
-  const cardUrl = typeof card.url === "string" ? card.url : "";
-  const providerUrl = typeof card.provider?.url === "string" ? card.provider.url : "";
-  const source = `${cardUrl} ${providerUrl}`;
-  const provider = registry.trustedProviders.find((candidate) => source.includes(candidate.domain));
+  const hosts = [hostOf(card.url), hostOf(card.provider?.url)].filter((host): host is string => host !== null);
+  const provider = registry.trustedProviders.find((candidate) => hosts.some((host) => hostMatchesDomain(host, candidate.domain)));
   if (!provider) return { match: false, reason: "No provider/domain match in tenant trust registry" };
 
   const cardSkillIds = new Set((card.skills ?? []).map((skill) => skill.id ?? skill.name));

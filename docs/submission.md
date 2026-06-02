@@ -60,7 +60,7 @@ See architecture diagram: https://github.com/oneKn8/agentgov/blob/main/docs/arch
 
 One TypeScript MCP server exposing 14 tools across two governance gates (6 trust + 8 release), one CLI binary `agentgov`, one signed decision schema, one audit table (SQLite default; Dataverse and SharePoint adapter interfaces ship behind the `Storage` interface, planned for tenant deployment).
 
-**Trust Gate flow:** Copilot Studio agent attempts delegation → AgentGov fetches `/.well-known/agent-card.json` → verifies JWS signature against pinned trust registry → scans metadata for prompt injection → sanitizes if recoverable → returns ALLOW / ALLOW_SANITIZED / REVIEW / BLOCK with an HMAC-signed verdict and an OpenTelemetry GenAI span.
+**Trust Gate flow:** Copilot Studio agent attempts delegation → AgentGov fetches `/.well-known/agent-card.json` → verifies the card signature (HMAC-SHA256 / JWS HS256 over RFC 8785 canonicalization, against a per-provider key pinned in the trust registry) → validates structural shape and fails closed on malformed cards → scans every attacker-controlled field (name, provider, skill name/id, description) for prompt injection with Unicode normalization → enforces the provider skill allowlist → sanitizes if recoverable → returns ALLOW / ALLOW_SANITIZED / REVIEW / BLOCK with an HMAC-signed verdict and an OpenTelemetry GenAI span.
 
 **Release Gate flow:** Copilot Studio maker requests release review → AgentGov ingests evaluation results + agent profile + policy YAML → asserts expected vs actual tool calls → evaluates policy rules with regression-over-time analysis (last 5 release decisions for the same agent) → classifies failures by category and severity → produces a PASS / WARN / BLOCK release packet (HTML-escaped Markdown ready for Teams or Adaptive Card routing) → persists signed decision to the audit table.
 
@@ -88,7 +88,7 @@ TypeScript
 - Azure Bicep IaC with `tier: free | paid` parameter
 - OpenTelemetry GenAI semantic conventions (Trust and Release verdicts both emit spans today; OTLP export on the roadmap, JSONL sink default)
 - RFC 8785 JSON Canonicalization Scheme for HMAC-SHA-256 signature payload
-- JWS signature verification for A2A Agent Cards
+- HMAC-SHA256 (JWS HS256) signature verification for A2A Agent Cards against per-provider keys pinned in the trust registry
 
 ## Submission Type
 

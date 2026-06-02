@@ -16,12 +16,18 @@ export function classifyReleaseRisk(input: ReleaseClassificationInput): ReleaseD
     ...(input.policyFailures ?? []),
     ...(input.toolFailures ?? [])
   ];
-  const regression = detectRegression(input.evalResult, failures, input.previousRuns ?? []);
-  if (regression.pass_rate_delta_pp <= -5 || regression.new_failure_categories.length > 0) {
+  const previousRuns = input.previousRuns ?? [];
+  const regression = detectRegression(input.evalResult, failures, previousRuns);
+  // Regression is a trend signal, not a point verdict. Require a real baseline
+  // (>=3 prior runs) so one noisy run can't flip the next, and keep it WARN-grade
+  // (medium) so a dip never escalates to a standalone BLOCK. This keeps the verdict
+  // deterministic for a given (profile, eval) regardless of run order.
+  const REGRESSION_MIN_BASELINE = 3;
+  if (previousRuns.length >= REGRESSION_MIN_BASELINE && (regression.pass_rate_delta_pp <= -5 || regression.new_failure_categories.length > 0)) {
     failures.push({
       id: "regression-detected",
       category: "regression",
-      severity: "high",
+      severity: "medium",
       message: `Regression detected: pass rate changed ${regression.pass_rate_delta_pp}pp with new categories ${regression.new_failure_categories.join(", ") || "none"}`,
       remediation: "Review recent instruction/tool/policy changes and rerun release gate."
     });

@@ -34,7 +34,7 @@ Microsoft Copilot Studio shipped multi-agent A2A in **April 2026** and [Microsof
 
 > Can my agent safely delegate to **this external A2A agent**?
 
-The **Trust Gate** fetches the external agent's [`/.well-known/agent-card.json`](https://github.com/a2aproject/A2A/blob/main/docs/specification.md), verifies its JWS signature against a pinned trust registry, scans metadata for prompt injection, sanitizes if recoverable, and returns one of:
+The **Trust Gate** fetches the external agent's [`/.well-known/agent-card.json`](https://github.com/a2aproject/A2A/blob/main/docs/specification.md), verifies its signature (HMAC-SHA256 / JWS HS256 over RFC 8785 canonicalization, against a per-provider key pinned in the trust registry), scans every attacker-controlled metadata field for prompt injection, sanitizes if recoverable, and returns one of:
 
 ```text
 ALLOW · ALLOW_SANITIZED · REVIEW · BLOCK
