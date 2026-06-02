@@ -1,4 +1,5 @@
 import { getStorage } from "../storage/sharedStorage.js";
+import { isUsingDefaultSecret } from "../gate/signing.js";
 import { loadTrustRegistry } from "../tools/trust/checkTrustRegistry.js";
 
 export function healthPayload() {
@@ -19,6 +20,9 @@ export async function readinessPayload() {
   };
   return {
     ok: Object.values(checks).every((value) => value === "ok" || value === "registered"),
+    // Informational: surfaces when decisions are signed with the public demo key
+    // so operators know to set AGENTGOV_HMAC_SECRET before trusting signatures.
+    signing_key: isUsingDefaultSecret() ? "default-demo-key" : "configured",
     checks,
     time: new Date().toISOString()
   };

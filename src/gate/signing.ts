@@ -3,6 +3,12 @@ import { canonicalize, withoutSignature } from "../lib/jcs.js";
 
 const DEFAULT_SECRET = "agentgov-dev-secret-change-me";
 
+// True when no operator secret is configured and decisions are signed with the
+// public demo key — in which case signatures are not a real integrity control.
+export function isUsingDefaultSecret(): boolean {
+  return !process.env.AGENTGOV_HMAC_SECRET;
+}
+
 export function signPayload(payload: Record<string, unknown>, secret = process.env.AGENTGOV_HMAC_SECRET ?? DEFAULT_SECRET): string {
   const canonical = canonicalize(withoutSignature(payload));
   return createHmac("sha256", secret).update(canonical).digest("base64url");

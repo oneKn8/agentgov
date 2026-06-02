@@ -129,6 +129,7 @@ describe("AgentGov HTTP and MCP server", () => {
     await expectJson("/healthz", { ok: true, service: "agentgov", version: "0.1.0" });
     await expectJson("/readyz", {
       ok: true,
+      signing_key: "default-demo-key",
       checks: {
         storage: "ok",
         trust_registry: "ok",
