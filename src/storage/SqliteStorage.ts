@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { ReleaseDecision, StoredDecision, TrustVerdict } from "../schema/types.js";
+import { signPayload } from "../gate/signing.js";
 import type { Storage } from "./Storage.js";
 
 export class SqliteStorage implements Storage {
@@ -26,10 +27,17 @@ export class SqliteStorage implements Storage {
         revoked_at text,
         revoked_by text,
         revoke_reason text,
+        revoke_signature text,
         created_at text not null
       );
       create index if not exists idx_decisions_subject_kind on decisions(subject_id, kind, created_at desc);
     `);
+    // Migrate audit stores created before revoke_signature existed.
+    try {
+      this.db.exec("alter table decisions add column revoke_signature text;");
+    } catch {
+      // Column already present — nothing to migrate.
+    }
   }
 
   async saveTrustVerdict(verdict: TrustVerdict, idempotencyKey: string): Promise<StoredDecision> {
@@ -79,10 +87,17 @@ export class SqliteStorage implements Storage {
     if (existing.revoked_at) return existing;
 
     const now = new Date().toISOString();
-    db.prepare("update decisions set revoked_at = ?, revoked_by = ?, revoke_reason = ? where decision_id = ?").run(
+    const revokeSignature = signPayload({
+      decision_id: decisionId,
+      revoked_at: now,
+      revoked_by: actor,
+      revoke_reason: reason
+    });
+    db.prepare("update decisions set revoked_at = ?, revoked_by = ?, revoke_reason = ?, revoke_signature = ? where decision_id = ?").run(
       now,
       actor,
       reason,
+      revokeSignature,
       decisionId
     );
     const record = await this.getDecision(decisionId);

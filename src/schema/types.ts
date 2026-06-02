@@ -131,5 +131,7 @@ export interface StoredDecision {
   revoked_at?: string;
   revoked_by?: string;
   revoke_reason?: string;
+  /** HMAC over the revocation tuple so revoke metadata is independently tamper-evident. */
+  revoke_signature?: string;
   created_at: string;
 }

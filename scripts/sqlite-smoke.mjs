@@ -3,6 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteStorage } from "../dist/storage/SqliteStorage.js";
+import { verifySignature } from "../dist/gate/signing.js";
 
 const dbPath = join(mkdtempSync(join(tmpdir(), "agentgov-sqlite-")), "agentgov.db");
 const storage = new SqliteStorage(dbPath);
@@ -44,6 +45,22 @@ const secondRevoke = await storage.revokeDecision(release.release_id, "second re
 assert.equal(secondRevoke.revoked_at, firstRevoke.revoked_at, "revoke timestamp should be idempotent");
 assert.equal(secondRevoke.revoked_by, "tester", "revoke actor should not be overwritten");
 assert.equal(secondRevoke.revoke_reason, "first revoke", "revoke reason should not be overwritten");
+
+assert.ok(
+  typeof firstRevoke.revoke_signature === "string" && firstRevoke.revoke_signature.length > 0,
+  "revocation metadata must be signed (tamper-evidence)"
+);
+const revokeMeta = {
+  decision_id: release.release_id,
+  revoked_at: firstRevoke.revoked_at,
+  revoked_by: firstRevoke.revoked_by,
+  revoke_reason: firstRevoke.revoke_reason
+};
+assert.ok(verifySignature(revokeMeta, firstRevoke.revoke_signature), "revocation signature must verify against its metadata");
+assert.ok(
+  !verifySignature({ ...revokeMeta, revoked_by: "attacker" }, firstRevoke.revoke_signature),
+  "tampered revocation metadata must fail verification"
+);
 
 const trustVerdict = {
   decision_id: "sqlite-smoke-trust",
