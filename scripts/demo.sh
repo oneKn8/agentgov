@@ -61,12 +61,18 @@ pause() {
 REV=$(printf '\033[7m')
 caption() {
   [ "$CAPTIONS" = "1" ] || return 0
+  local text="$1"
   printf '\n'
-  printf '%s\n' "$1" | fold -s -w 66 | while IFS= read -r line; do
-    printf '%s%s  %-66s  %s\n' "$BOLD" "$REV" "$line" "$RESET"
+  printf '%s\n' "$text" | fold -s -w 76 | while IFS= read -r line; do
+    printf '%s%s  %-76s  %s\n' "$BOLD" "$REV" "$line" "$RESET"
   done
   printf '\n'
-  sleep "${CAPTION_HOLD:-5}"
+  # Hold scales with reading length (~0.42s/word) so longer explanations stay
+  # on screen long enough to read. CAPTION_HOLD is the floor.
+  local words hold
+  words=$(printf '%s' "$text" | wc -w)
+  hold=$(awk -v w="$words" -v base="${CAPTION_HOLD:-5}" 'BEGIN{h=w*0.36; if(h<base)h=base; printf "%.1f", h}')
+  sleep "$hold"
 }
 
 # Ensure dist/ exists. Build silently if not.
@@ -84,13 +90,13 @@ fi
 
 CLI="node dist/cli.js"
 
-caption "Two questions every Copilot Studio maker faces: can I trust an external agent, and is my own agent ready to ship?"
+caption "Copilot Studio agents now delegate to external A2A agents and ship to real users. Two governance questions have no built-in answer: can I trust an agent before delegating to it, and is my own agent safe to release?"
 
 # ─────────────────────────────────────────────────────────────────────
 banner "ACT 1 — Trust Gate blocks a poisoned external Agent Card"
 # ─────────────────────────────────────────────────────────────────────
 
-caption "Untrusted agent card: signature fails, injection strings found. Verdict: BLOCK, risk score 100."
+caption "An external A2A agent advertises itself with an Agent Card. AgentGov inspects it before your agent ever delegates. This one is unsigned, from an unknown vendor, and its description hides prompt-injection instructions. Risk score 100. Verdict: BLOCK."
 
 step "External A2A agent advertises itself via /.well-known/agent-card.json"
 step "AgentGov fetches it, fails signature verification, scans every field, decides"
@@ -101,7 +107,7 @@ pause
 
 banner "ACT 1b — Same product, signed and registered: ALLOW with provenance"
 
-caption "Signed and registered card: ALLOW, with an HMAC-signed verdict."
+caption "The same kind of agent, but signed with a key pinned in your trust registry and carrying clean metadata. Verdict: ALLOW, and AgentGov returns an HMAC-signed decision you can audit later."
 
 cmd "agentgov trust check fixtures/agent-cards/trusted-signed.json --offline"
 $CLI trust check fixtures/agent-cards/trusted-signed.json --offline
@@ -111,7 +117,7 @@ pause
 banner "ACT 2 — Release Gate blocks an unready Copilot Studio agent"
 # ─────────────────────────────────────────────────────────────────────
 
-caption "Agent approved a \$50K exception with no policy check. 62% pass, 7 critical failures: BLOCK."
+caption "Now the second question. This Vendor Exception agent approved a 50,000 dollar exception with no policy lookup. Its eval run scores 62 percent with 7 critical failures. Verdict: BLOCK, not cleared for release."
 
 step "Vendor Exception Agent — approved a \$50K exception without policy lookup"
 step "Eval results + policy YAML → AgentGov classifies, signs, persists"
@@ -120,6 +126,7 @@ cmd "agentgov release check target-agents/vendor-exception.yaml --eval fixtures/
 $CLI release check target-agents/vendor-exception.yaml --eval fixtures/eval-results/block.json
 pause
 
+caption "Every blocked release produces a signed Markdown packet: the failures, the root causes, and the exact fixes the owner must make before resubmitting."
 step "The human-readable release packet — signed Markdown ready for the owner"
 echo
 cmd "head -40 outputs/release-packet.md"
@@ -134,7 +141,7 @@ pause
 banner "ACT 2b — Release Gate passes the remediated agent"
 # ─────────────────────────────────────────────────────────────────────
 
-caption "Same agent after fixes: evidence attached, policy lookup recorded, 96% pass. Verdict: PASS, signed and clear to ship."
+caption "After remediation: the required evidence is attached, the policy lookup is recorded, and the eval run passes at 96 percent. Verdict: PASS, signed and cleared to ship."
 
 step "Remediated Vendor Exception Agent — required evidence present, policy clean"
 echo
@@ -146,7 +153,7 @@ pause
 banner "ACT 3 — Revoke a release post-deployment (verdict intact, revoke metadata recorded)"
 # ─────────────────────────────────────────────────────────────────────
 
-caption "Post-release regression: one call records the revoke. Original verdict and signature untouched."
+caption "Governance does not end at release. A regression surfaces in production after the agent shipped. One command revokes the decision, and the revocation itself is signed, so the audit trail stays tamper-evident."
 
 # Pull the most-recent release_id from SQLite so this works on any run.
 RELEASE_ID=$(node -e '
@@ -187,7 +194,7 @@ pause
 banner "ACT 4 — Verdict Inspector reads the signed audit trail"
 # ─────────────────────────────────────────────────────────────────────
 
-caption "Not a replacement for Agent 365, the signed evidence feed it consumes. Trust in, release out."
+caption "Every trust and release decision is signed, persisted, and exportable. AgentGov does not replace Microsoft Agent 365. It produces the verified evidence that control plane consumes. Trust in, release out."
 
 step "Export every decision + OTel span into the static viewer's JSON"
 echo
@@ -211,7 +218,7 @@ printf '  • %soutputs/otel-spans.jsonl%s — OpenTelemetry GenAI spans (Trust 
 printf '  • %soutputs/release-packet.md%s — signed Markdown packet for the agent owner\n' "$BOLD" "$RESET"
 printf '  • %sdocs/viewer/verdicts.json%s — viewer data file (regenerated above)\n' "$BOLD" "$RESET"
 echo
-caption "Microsoft Agent Academy, Special Ops track. MIT open source: CLI + MCP server, 14 tools. github.com/oneKn8/agentgov"
+caption "AgentGov. Open source: one MCP server, fourteen tools, a CLI, and a signed audit trail. Microsoft Agent Academy, Special Ops. github.com/oneKn8/agentgov"
 
 printf '%sgithub.com/oneKn8/agentgov%s\n' "$GREEN$BOLD" "$RESET"
 

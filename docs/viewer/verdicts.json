@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-03T02:51:27.627Z",
+  "generated_at": "2026-06-03T03:06:58.052Z",
   "source_db": "outputs/agentgov.db",
   "source_spans": "outputs/otel-spans.jsonl",
   "db_size_bytes": 32768,
@@ -20,12 +20,12 @@
       "kind": "release",
       "subject_id": "vendor-exception-agent-v1",
       "verdict": "PASS",
-      "signature": "wfQckesM0TfjCz2NGkSM999cuiQn9L626ZhMJQMnieE",
+      "signature": "h1adAd_voHDLXTH3sRDKIHyzV_n6VfTKTX4p3csfsKE",
       "idempotency_key": "vendor-exception-agent-v1-eval-pass-001",
-      "revoked_at": "2026-06-03T02:51:21.575Z",
+      "revoked_at": "2026-06-03T03:06:44.197Z",
       "revoked_by": "demo@agentgov.local",
       "revoke_reason": "post-release regression",
-      "created_at": "2026-06-03T02:51:15.465Z",
+      "created_at": "2026-06-03T03:06:29.589Z",
       "payload": {
         "release_id": "vendor-exception-agent-v1-eval-pass-001",
         "agent_id": "vendor-exception-agent-v1",
@@ -38,8 +38,8 @@
         "root_causes": [],
         "recommended_fixes": [],
         "owner": "shifat.santo@example.com",
-        "approval_deadline": "2026-06-06T02:51:15.465Z",
-        "created_at": "2026-06-03T02:51:15.465Z",
+        "approval_deadline": "2026-06-06T03:06:29.589Z",
+        "created_at": "2026-06-03T03:06:29.589Z",
         "evidence_ref": "eval-pass-001",
         "policy_version": "policies/vendor-exception.yaml",
         "regression": {
@@ -48,12 +48,12 @@
           "new_failure_categories": []
         },
         "failures": [],
-        "signature": "wfQckesM0TfjCz2NGkSM999cuiQn9L626ZhMJQMnieE"
+        "signature": "h1adAd_voHDLXTH3sRDKIHyzV_n6VfTKTX4p3csfsKE"
       },
       "span": {
-        "trace_id": "4d93da481584119e8b646e8a",
+        "trace_id": "08cbcd1bd1a43819e8b726156",
         "name": "agentgov.release.verdict",
-        "timestamp": "2026-06-03T02:51:15.466Z",
+        "timestamp": "2026-06-03T03:06:29.590Z",
         "attributes": {
           "gen_ai.system": "agentgov",
           "gen_ai.operation.name": "agentgov.release.verdict",
@@ -77,12 +77,12 @@
       "kind": "release",
       "subject_id": "vendor-exception-agent-v1",
       "verdict": "BLOCK",
-      "signature": "2UPWwO_zW0bgI6EJXkFXRGMyKtHP7oZXMLFvXbBIYrk",
+      "signature": "BGq4Lg8ben6IXI1HZPZI5Nl4uAHlbFQEcs5aCoGSlXo",
       "idempotency_key": "vendor-exception-agent-v1-eval-block-001",
       "revoked_at": null,
       "revoked_by": null,
       "revoke_reason": null,
-      "created_at": "2026-06-03T02:51:08.381Z",
+      "created_at": "2026-06-03T03:06:05.486Z",
       "payload": {
         "release_id": "vendor-exception-agent-v1-eval-block-001",
         "agent_id": "vendor-exception-agent-v1",
@@ -114,8 +114,8 @@
           "Attach or generate evidence for justification_doc_ref before release."
         ],
         "owner": "shifat.santo@example.com",
-        "approval_deadline": "2026-06-06T02:51:08.381Z",
-        "created_at": "2026-06-03T02:51:08.381Z",
+        "approval_deadline": "2026-06-06T03:06:05.486Z",
+        "created_at": "2026-06-03T03:06:05.486Z",
         "evidence_ref": "eval-block-001",
         "policy_version": "policies/vendor-exception.yaml",
         "regression": {
@@ -209,12 +209,12 @@
             "remediation": "Attach or generate evidence for justification_doc_ref before release."
           }
         ],
-        "signature": "2UPWwO_zW0bgI6EJXkFXRGMyKtHP7oZXMLFvXbBIYrk"
+        "signature": "BGq4Lg8ben6IXI1HZPZI5Nl4uAHlbFQEcs5aCoGSlXo"
       },
       "span": {
-        "trace_id": "445c7f1d6cb29819e8b6452de",
+        "trace_id": "8ef45bbaa8b31819e8b72032f",
         "name": "agentgov.release.verdict",
-        "timestamp": "2026-06-03T02:51:08.382Z",
+        "timestamp": "2026-06-03T03:06:05.487Z",
         "attributes": {
           "gen_ai.system": "agentgov",
           "gen_ai.operation.name": "agentgov.release.verdict",
@@ -240,18 +240,18 @@
       }
     },
     {
-      "decision_id": "trust-1e186359d68311ee",
+      "decision_id": "trust-68ed5dfd96c8deb1",
       "kind": "trust",
       "subject_id": "Trusted Invoice Helper",
       "verdict": "ALLOW",
-      "signature": "une4UULWlPuVEll6Mt6J6eCodfrr1MtNrU4vZooWMuQ",
-      "idempotency_key": "trust-1e186359d68311ee",
+      "signature": "mjqII-THBCLJXl4gjBz7iBzQT-WfBINCD8onRJTCpbw",
+      "idempotency_key": "trust-68ed5dfd96c8deb1",
       "revoked_at": null,
       "revoked_by": null,
       "revoke_reason": null,
-      "created_at": "2026-06-03T02:51:02.289Z",
+      "created_at": "2026-06-03T03:05:50.492Z",
       "payload": {
-        "decision_id": "trust-1e186359d68311ee",
+        "decision_id": "trust-68ed5dfd96c8deb1",
         "agent_name": "Trusted Invoice Helper",
         "source": "fixtures/agent-cards/trusted-signed.json",
         "verdict": "ALLOW",
@@ -263,38 +263,38 @@
         "registry_match": true,
         "signature_valid": true,
         "policy_version": "2026-05-17",
-        "created_at": "2026-06-03T02:51:02.289Z",
-        "signature": "une4UULWlPuVEll6Mt6J6eCodfrr1MtNrU4vZooWMuQ"
+        "created_at": "2026-06-03T03:05:50.492Z",
+        "signature": "mjqII-THBCLJXl4gjBz7iBzQT-WfBINCD8onRJTCpbw"
       },
       "span": {
-        "trace_id": "d89c8ac9f0a85819e8b643b11",
+        "trace_id": "edf51abb282c519e8b71c89c",
         "name": "agentgov.trust.verdict",
-        "timestamp": "2026-06-03T02:51:02.289Z",
+        "timestamp": "2026-06-03T03:05:50.492Z",
         "attributes": {
           "gen_ai.system": "agentgov",
           "gen_ai.operation.name": "agentgov.trust.verdict",
           "agentgov.tenant_id": "local",
           "agentgov.agent_id": "Trusted Invoice Helper",
           "agentgov.verdict": "ALLOW",
-          "agentgov.latency_ms": 1,
+          "agentgov.latency_ms": 2,
           "agentgov.failure_categories": [],
           "agentgov.policy_version": "2026-05-17"
         }
       }
     },
     {
-      "decision_id": "trust-840571d0ebad2cf5",
+      "decision_id": "trust-c2f3466a1b452e99",
       "kind": "trust",
       "subject_id": "Invoice Helper",
       "verdict": "BLOCK",
-      "signature": "hHnMdykVdp3XoFNQBOwh5PbuDgVfspNadThuNOvqH04",
-      "idempotency_key": "trust-840571d0ebad2cf5",
+      "signature": "cVpOjFP_6bhH3aw6_fKa8Br6xqFqYaCfRYu23aXWPsI",
+      "idempotency_key": "trust-c2f3466a1b452e99",
       "revoked_at": null,
       "revoked_by": null,
       "revoke_reason": null,
-      "created_at": "2026-06-03T02:50:56.189Z",
+      "created_at": "2026-06-03T03:05:36.189Z",
       "payload": {
-        "decision_id": "trust-840571d0ebad2cf5",
+        "decision_id": "trust-c2f3466a1b452e99",
         "agent_name": "Invoice Helper",
         "source": "fixtures/agent-cards/poisoned-injection.json",
         "verdict": "BLOCK",
@@ -361,20 +361,20 @@
         "registry_match": false,
         "signature_valid": false,
         "policy_version": "2026-05-17",
-        "created_at": "2026-06-03T02:50:56.189Z",
-        "signature": "hHnMdykVdp3XoFNQBOwh5PbuDgVfspNadThuNOvqH04"
+        "created_at": "2026-06-03T03:05:36.189Z",
+        "signature": "cVpOjFP_6bhH3aw6_fKa8Br6xqFqYaCfRYu23aXWPsI"
       },
       "span": {
-        "trace_id": "690e700aac07e19e8b64233e",
+        "trace_id": "fcfb9ad27e517819e8b7190bd",
         "name": "agentgov.trust.verdict",
-        "timestamp": "2026-06-03T02:50:56.190Z",
+        "timestamp": "2026-06-03T03:05:36.189Z",
         "attributes": {
           "gen_ai.system": "agentgov",
           "gen_ai.operation.name": "agentgov.trust.verdict",
           "agentgov.tenant_id": "local",
           "agentgov.agent_id": "Invoice Helper",
           "agentgov.verdict": "BLOCK",
-          "agentgov.latency_ms": 5,
+          "agentgov.latency_ms": 2,
           "agentgov.failure_categories": [
             "metadata-injection-1",
             "metadata-injection-2",
