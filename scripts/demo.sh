@@ -93,7 +93,7 @@ banner "ACT 1 — Trust Gate blocks a poisoned external Agent Card"
 caption "Untrusted agent card: signature fails, injection strings found. Verdict: BLOCK, risk score 100."
 
 step "External A2A agent advertises itself via /.well-known/agent-card.json"
-step "AgentGov fetches it, fails JWS verification, scans metadata, decides"
+step "AgentGov fetches it, fails signature verification, scans every field, decides"
 echo
 cmd "agentgov trust check fixtures/agent-cards/poisoned-injection.json --offline"
 $CLI trust check fixtures/agent-cards/poisoned-injection.json --offline
@@ -128,6 +128,18 @@ if [ -f outputs/release-packet.md ]; then
 else
   printf '%s(release-packet.md not generated — release check must have failed)%s\n' "$RED" "$RESET"
 fi
+pause
+
+# ─────────────────────────────────────────────────────────────────────
+banner "ACT 2b — Release Gate passes the remediated agent"
+# ─────────────────────────────────────────────────────────────────────
+
+caption "Same agent after fixes: evidence attached, policy lookup recorded, 96% pass. Verdict: PASS, signed and clear to ship."
+
+step "Remediated Vendor Exception Agent — required evidence present, policy clean"
+echo
+cmd "agentgov release check target-agents/vendor-exception.yaml --eval fixtures/eval-results/pass.json"
+$CLI release check target-agents/vendor-exception.yaml --eval fixtures/eval-results/pass.json
 pause
 
 # ─────────────────────────────────────────────────────────────────────
